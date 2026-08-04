@@ -1,26 +1,381 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* next-themes writes `class="dark"` on <html>. */
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* The single accent. Focus rings, active nav, links, selected cell.
+     Chosen so it collides with none of the five status hues below. */
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-brand-muted: var(--brand-muted);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+
+  /* Status system. Soft tinted surface + accessible foreground, both modes.
+     Maps 1:1 onto the workbook's colour coding:
+     active=green, warning=amber (tugash arafasida), expired=red,
+     debt=orange (qarzdor), neutral=gray (bekor qilingan). */
+  --color-status-active: var(--status-active);
+  --color-status-active-foreground: var(--status-active-foreground);
+  --color-status-active-edge: var(--status-active-edge);
+  --color-status-warning: var(--status-warning);
+  --color-status-warning-foreground: var(--status-warning-foreground);
+  --color-status-warning-edge: var(--status-warning-edge);
+  --color-status-expired: var(--status-expired);
+  --color-status-expired-foreground: var(--status-expired-foreground);
+  --color-status-expired-edge: var(--status-expired-edge);
+  --color-status-debt: var(--status-debt);
+  --color-status-debt-foreground: var(--status-debt-foreground);
+  --color-status-debt-edge: var(--status-debt-edge);
+  --color-status-neutral: var(--status-neutral);
+  --color-status-neutral-foreground: var(--status-neutral-foreground);
+  --color-status-neutral-edge: var(--status-neutral-edge);
+
+  /* Money actually collected. The gym does not take payment up front, so the
+     desk marks a cell once the cash is in hand. This is the workbook's
+     highlighter yellow, and it earns its own token rather than borrowing
+     `warning`, which means something else entirely. */
+  --color-paid: var(--paid);
+  --color-paid-foreground: var(--paid-foreground);
+
+  /* Data grid. The spreadsheet surface has its own quieter rules so the
+     hairlines never compete with content. */
+  --color-grid-line: var(--grid-line);
+  --color-grid-header: var(--grid-header);
+  --color-grid-row-hover: var(--grid-row-hover);
+  --color-grid-row-alt: var(--grid-row-alt);
+  --color-grid-cell-focus: var(--grid-cell-focus);
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.5);
+  --radius-2xl: calc(var(--radius) * 2);
+
+  /* Row heights. The sheet is deliberately tighter than the list views. */
+  --spacing-row: 2rem;
+  --spacing-row-lg: 2.5rem;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+:root {
+  color-scheme: light;
+
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.16 0.004 285);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.16 0.004 285);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.16 0.004 285);
+  --primary: oklch(0.21 0.006 285);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.967 0.001 286);
+  --secondary-foreground: oklch(0.21 0.006 285);
+  --muted: oklch(0.967 0.001 286);
+  --muted-foreground: oklch(0.552 0.014 285);
+  --accent: oklch(0.967 0.001 286);
+  --accent-foreground: oklch(0.21 0.006 285);
+  --destructive: oklch(0.577 0.245 27.3);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0.92 0.004 286);
+  --input: oklch(0.92 0.004 286);
+  --ring: oklch(0.52 0.16 258);
+
+  --brand: oklch(0.52 0.16 258);
+  --brand-foreground: oklch(0.985 0 0);
+  --brand-muted: oklch(0.95 0.03 258);
+
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.16 0.004 285);
+  --sidebar-accent: oklch(0.955 0.002 286);
+  --sidebar-accent-foreground: oklch(0.21 0.006 285);
+  --sidebar-border: oklch(0.92 0.004 286);
+
+  --status-active: oklch(0.93 0.05 150);
+  --status-active-foreground: oklch(0.44 0.11 150);
+  --status-active-edge: oklch(0.6 0.13 150);
+  --status-warning: oklch(0.94 0.06 85);
+  --status-warning-foreground: oklch(0.48 0.1 70);
+  --status-warning-edge: oklch(0.72 0.14 75);
+  --status-expired: oklch(0.94 0.04 25);
+  --status-expired-foreground: oklch(0.51 0.19 25);
+  --status-expired-edge: oklch(0.63 0.2 25);
+  --status-debt: oklch(0.94 0.05 55);
+  --status-debt-foreground: oklch(0.52 0.15 48);
+  --status-debt-edge: oklch(0.68 0.16 52);
+  --status-neutral: oklch(0.95 0 0);
+  --status-neutral-foreground: oklch(0.44 0 0);
+  --status-neutral-edge: oklch(0.75 0 0);
+
+  --paid: oklch(0.93 0.15 102);
+  --paid-foreground: oklch(0.38 0.09 85);
+
+  --grid-line: oklch(0.9 0.004 286);
+  --grid-header: oklch(0.975 0.001 286);
+  --grid-row-hover: oklch(0.978 0.002 258);
+  /* Zebra banding. Deliberately fainter than the hover tint: the stripe is a
+     reading aid, and hovering a striped row must still be visible as a change. */
+  --grid-row-alt: oklch(0.985 0.001 286);
+  --grid-cell-focus: oklch(0.96 0.03 258);
+
+  --radius: 0.5rem;
+}
+
+.dark {
+  color-scheme: dark;
+
+  --background: oklch(0.14 0.004 285);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.19 0.005 285);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.19 0.005 285);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.92 0.004 286);
+  --primary-foreground: oklch(0.21 0.006 285);
+  --secondary: oklch(0.26 0.006 286);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.26 0.006 286);
+  --muted-foreground: oklch(0.71 0.013 286);
+  --accent: oklch(0.26 0.006 286);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.2);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(1 0 0 / 11%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.7 0.14 258);
+
+  --brand: oklch(0.7 0.14 258);
+  --brand-foreground: oklch(0.16 0.01 258);
+  --brand-muted: oklch(0.3 0.06 258 / 55%);
+
+  --sidebar: oklch(0.17 0.005 285);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.26 0.006 286);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+
+  --status-active: oklch(0.28 0.06 155 / 60%);
+  --status-active-foreground: oklch(0.83 0.15 155);
+  --status-active-edge: oklch(0.63 0.14 155);
+  --status-warning: oklch(0.3 0.06 85 / 55%);
+  --status-warning-foreground: oklch(0.85 0.14 90);
+  --status-warning-edge: oklch(0.7 0.14 85);
+  --status-expired: oklch(0.3 0.08 25 / 55%);
+  --status-expired-foreground: oklch(0.78 0.15 25);
+  --status-expired-edge: oklch(0.62 0.19 25);
+  --status-debt: oklch(0.3 0.07 55 / 55%);
+  --status-debt-foreground: oklch(0.82 0.14 62);
+  --status-debt-edge: oklch(0.66 0.15 58);
+  --status-neutral: oklch(1 0 0 / 8%);
+  --status-neutral-foreground: oklch(0.72 0 0);
+  --status-neutral-edge: oklch(0.5 0 0);
+
+  --paid: oklch(0.55 0.13 100 / 45%);
+  --paid-foreground: oklch(0.93 0.16 102);
+
+  --grid-line: oklch(1 0 0 / 9%);
+  --grid-header: oklch(0.22 0.005 285);
+  --grid-row-hover: oklch(1 0 0 / 4%);
+  --grid-row-alt: oklch(1 0 0 / 2.5%);
+  --grid-cell-focus: oklch(0.35 0.06 258 / 45%);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* One focus treatment everywhere, driven by the single accent. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  /* Native <select> option list stays readable in both themes. */
+  select option {
+    background-color: var(--popover);
+    color: var(--popover-foreground);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Wrong-PIN feedback. Motivated: it reads as "rejected" before the eye has
+   found the error text, which matters at a desk with a member waiting. */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(2px); }
+}
+
+@layer utilities {
+  /* Money, counts, dates, phone numbers. Density 8 makes this mandatory,
+     and it is also what stops columns jittering as values change. */
+  .nums {
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+
+  /* Faint grid backdrop. Structure you feel rather than read. */
+  .bg-grid {
+    background-image:
+      linear-gradient(
+        to right,
+        color-mix(in oklch, var(--foreground) 4%, transparent) 1px,
+        transparent 1px
+      ),
+      linear-gradient(
+        to bottom,
+        color-mix(in oklch, var(--foreground) 4%, transparent) 1px,
+        transparent 1px
+      );
+    background-size: 44px 44px;
+  }
+}
+
+/* Paper. The daily sheet and receipts get reconciled on paper at closing, so
+   printing has to produce the table and nothing else: no chrome, no tints that
+   turn into grey mud, and hairlines that actually survive a mono printer. */
+@media print {
+  :root {
+    color-scheme: light;
+  }
+
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  /* Navigation chrome never belongs on paper. */
+  aside,
+  header,
+  nav,
+  [data-slot="button"],
+  .print\:hidden {
+    display: none !important;
+  }
+
+  main {
+    padding: 0 !important;
+  }
+
+  table {
+    width: 100% !important;
+    font-size: 10pt;
+  }
+
+  /* Sticky columns collapse: on paper there is nothing to scroll. */
+  th,
+  td {
+    position: static !important;
+    background: transparent !important;
+    border-color: #999 !important;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tr {
+    break-inside: avoid;
+  }
+}
+
+/* Thermal receipt. When a [data-receipt] block is on screen it is the only
+   thing that prints, at 80mm with no page margins, so the roll comes out
+   looking like a till receipt rather than a screenshot of a web page. */
+@media print {
+  body:has([data-receipt]) {
+    background: #fff !important;
+  }
+
+  body:has([data-receipt]) * {
+    visibility: hidden !important;
+  }
+
+  body:has([data-receipt]) [data-receipt],
+  body:has([data-receipt]) [data-receipt] * {
+    visibility: visible !important;
+  }
+
+  [data-receipt] {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 80mm !important;
+    margin: 0 !important;
+    padding: 2mm 3mm !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    color: #000 !important;
+    font-size: 10pt !important;
+    line-height: 1.4 !important;
+    /* The roll has no fixed length; it cuts where the content ends. */
+    overflow: visible !important;
+    page: gymos-receipt;
+  }
+}
+
+/* Named so it applies only to the receipt. A bare `@page` here would force
+   the daily sheet onto an 80mm roll too, and that still prints on A4. */
+@page gymos-receipt {
+  size: 80mm auto;
+  margin: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

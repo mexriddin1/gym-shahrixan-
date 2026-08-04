@@ -1,0 +1,62 @@
+rules_version = '2';
+
+// Access model: PIN only.
+//
+// The app signs itself in anonymously and the 4-digit desk PIN decides which
+// staff member is using it. That is a product decision for a shared front-desk
+// terminal, and it has a consequence worth stating plainly rather than hiding
+// in a helper function:
+//
+//   These rules authorise any anonymous session. The PIN is checked in the
+//   client, so it keeps staff out of the wrong screens but does NOT stop
+//   someone who reads the public Firebase config from querying the database
+//   directly. Treat the data here as protected by obscurity, not by rules.
+//
+// If that ever needs to change, the fix is per-staff Firebase Auth accounts
+// with a staff/{uid} lookup, or routing writes through Cloud Functions. Both
+// were considered and set aside in favour of the PIN.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // Staff records carry the PIN hashes, so the app has to read them to work
+    // out who is at the desk.
+    match /staff/{id} {
+      allow read, write: if signedIn();
+    }
+
+    // Operational data.
+    match /clients/{id}              { allow read, write: if signedIn(); }
+    match /tariffs/{id}              { allow read, write: if signedIn(); }
+    match /subscriptions/{id}        { allow read, write: if signedIn(); }
+    match /payments/{id}             { allow read, write: if signedIn(); }
+    match /visits/{id}               { allow read, write: if signedIn(); }
+    match /products/{id}             { allow read, write: if signedIn(); }
+    match /stock_movements/{id}      { allow read, write: if signedIn(); }
+    match /orders/{id}               { allow read, write: if signedIn(); }
+    match /subscription_freezes/{id} { allow read, write: if signedIn(); }
+    match /settings/{id}             { allow read, write: if signedIn(); }
+    match /counters/{entity}         { allow read, write: if signedIn(); }
+
+    match /daily_sheets/{date} {
+      allow read, write: if signedIn();
+      match /rows/{rowId} { allow read, write: if signedIn(); }
+    }
+
+    // Audit log stays append-only. Roles are enforced in the client, but this
+    // one rule is worth keeping at the database level: history that can be
+    // rewritten is not history.
+    match /audit_log/{id} {
+      allow read, create: if signedIn();
+      allow update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

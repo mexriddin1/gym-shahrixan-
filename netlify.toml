@@ -1,0 +1,14 @@
+# Netlify build for Next.js 16.
+#
+# The Next runtime plugin is what makes App Router routing, server components
+# and dynamic routes work on Netlify; a plain static publish would 404 on
+# /mijozlar/<id> and the walk-in pages, which are server-rendered on demand.
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+[build.environment]
+  NODE_VERSION = "20"
