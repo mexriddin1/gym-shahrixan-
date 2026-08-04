@@ -29,6 +29,7 @@ export function ConfirmDialog({
   confirmVariant = "destructive",
   reasonLabel,
   reasonPlaceholder,
+  option,
   onConfirm,
 }: {
   open: boolean;
@@ -40,9 +41,18 @@ export function ConfirmDialog({
   /** When set, a non-empty reason is required before confirming. */
   reasonLabel?: string;
   reasonPlaceholder?: string;
-  onConfirm: (reason: string) => Promise<void>;
+  /**
+   * An extra, off-by-default choice that widens what the action removes.
+   *
+   * Off by default on purpose: the wider action is always the more destructive
+   * one, so it has to be reached for deliberately rather than accepted by
+   * pressing Enter.
+   */
+  option?: { label: string; hint?: string };
+  onConfirm: (reason: string, optionChecked: boolean) => Promise<void>;
 }) {
   const [reason, setReason] = useState("");
+  const [checked, setChecked] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -51,6 +61,7 @@ export function ConfirmDialog({
     setPrevOpen(open);
     if (open) {
       setReason("");
+      setChecked(false);
       setError(null);
     }
   }
@@ -64,7 +75,7 @@ export function ConfirmDialog({
 
     setBusy(true);
     try {
-      await onConfirm(reason.trim());
+      await onConfirm(reason.trim(), checked);
       onOpenChange(false);
     } catch {
       // The caller surfaces its own toast; keep the dialog open so the action
@@ -100,6 +111,25 @@ export function ConfirmDialog({
                 aria-invalid={!!error}
               />
             </Field>
+          ) : null}
+
+          {option ? (
+            <label className="flex cursor-pointer items-start gap-2.5 border border-border px-3 py-2.5 text-sm">
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={(e) => setChecked(e.target.checked)}
+                className="mt-0.5 size-4 shrink-0 accent-destructive"
+              />
+              <span className="min-w-0">
+                <span className="block">{option.label}</span>
+                {option.hint ? (
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    {option.hint}
+                  </span>
+                ) : null}
+              </span>
+            </label>
           ) : null}
 
           <DialogFooter>

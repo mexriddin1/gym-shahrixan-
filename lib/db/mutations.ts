@@ -1,9 +1,20 @@
-import { deleteDoc, doc, runTransaction, updateDoc } from "firebase/firestore";
+import {
+  deleteDoc,
+  doc,
+  getDocs,
+  query,
+  runTransaction,
+  updateDoc,
+  where,
+  writeBatch,
+} from "firebase/firestore";
 
 import {
   clientsRef,
   db,
+  paymentsRef,
   productsRef,
+  subscriptionsRef,
   tariffsRef,
 } from "./collections";
 import { allocateCode, now, writeAudit, type Actor } from "./write";
@@ -107,12 +118,45 @@ export async function setClientArchived(
   });
 }
 
+/**
+ * Removes a member, and optionally everything sold to them.
+ *
+ * The default leaves subscriptions and payments in place. That is deliberate:
+ * money the gym took is part of the books whether or not the member is still
+ * on the list, and a report covering last month should not change because
+ * somebody was tidied off the roster today.
+ *
+ * `withRecords` is for the other case - a member entered twice, or by mistake,
+ * whose sales were never real. Then the records have to go too, or they sit
+ * there forever attached to a member id that no longer resolves to anyone.
+ */
 export async function deleteClient(
   id: string,
   before: Client,
   actor: Actor,
-): Promise<void> {
-  await deleteDoc(doc(clientsRef(), id));
+  options: { withRecords: boolean } = { withRecords: false },
+): Promise<{ subscriptions: number; payments: number }> {
+  let removed = { subscriptions: 0, payments: 0 };
+
+  if (options.withRecords) {
+    const [subs, payments] = await Promise.all([
+      getDocs(query(subscriptionsRef(), where("clientId", "==", id))),
+      getDocs(query(paymentsRef(), where("clientId", "==", id))),
+    ]);
+
+    // One batch, so a member is never left half-deleted with some of their
+    // sales gone and the rest orphaned.
+    const batch = writeBatch(db());
+    for (const d of subs.docs) batch.delete(d.ref);
+    for (const d of payments.docs) batch.delete(d.ref);
+    batch.delete(doc(clientsRef(), id));
+    await batch.commit();
+
+    removed = { subscriptions: subs.size, payments: payments.size };
+  } else {
+    await deleteDoc(doc(clientsRef(), id));
+  }
+
   writeAudit({
     actor,
     action: "delete",
@@ -121,8 +165,11 @@ export async function deleteClient(
     before: {
       name: `${before.firstName} ${before.lastName ?? ""}`.trim(),
       code: before.code,
+      ...(options.withRecords ? { removed } : {}),
     },
   });
+
+  return removed;
 }
 
 export type TariffInput = {

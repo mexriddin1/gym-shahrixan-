@@ -162,10 +162,16 @@ export default function ClientsPage() {
     }
   }
 
-  async function handleDelete(client: Client) {
+  async function handleDelete(client: Client, withRecords: boolean) {
     try {
-      await deleteClient(client.id, client, actor);
-      toast.success("Mijoz o'chirildi");
+      const removed = await deleteClient(client.id, client, actor, {
+        withRecords,
+      });
+      toast.success(
+        withRecords
+          ? `Mijoz, ${removed.subscriptions} ta abonement va ${removed.payments} ta to'lov o'chirildi`
+          : "Mijoz o'chirildi",
+      );
       reload();
     } catch {
       toast.error("O'chirib bo'lmadi");
@@ -314,8 +320,13 @@ export default function ClientsPage() {
                 confirm({
                   title: `${name} o'chirilsinmi?`,
                   description:
-                    "Abonementlari va to'lov tarixi bazada qoladi, lekin mijoz ro'yxatdan chiqadi.",
-                  run: () => handleDelete(row.original),
+                    "Mijoz ro'yxatdan chiqadi. Abonementlari va to'lovlari saqlanib qoladi.",
+                  option: {
+                    label: "Abonement va to'lovlarini ham o'chirish",
+                    hint: "Hisobotdagi o'tgan oylar summasi ham o'zgaradi. Faqat xato kiritilgan mijoz uchun.",
+                  },
+                  run: ({ withOption }) =>
+                    handleDelete(row.original, withOption),
                 });
               }}
             >

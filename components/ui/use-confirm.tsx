@@ -8,7 +8,9 @@ type Pending = {
   title: string;
   description?: string;
   confirmLabel?: string;
-  run: () => Promise<void> | void;
+  /** Adds an off-by-default checkbox; its state reaches `run`. */
+  option?: { label: string; hint?: string };
+  run: (result: { withOption: boolean }) => Promise<void> | void;
 };
 
 /**
@@ -31,8 +33,9 @@ export function useConfirm() {
       title={pending?.title ?? ""}
       description={pending?.description}
       confirmLabel={pending?.confirmLabel ?? "O'chirish"}
-      onConfirm={async () => {
-        await pending?.run();
+      option={pending?.option}
+      onConfirm={async (_reason, withOption) => {
+        await pending?.run({ withOption });
       }}
     />
   );

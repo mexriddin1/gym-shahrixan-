@@ -8,6 +8,7 @@ import type {
   DiscountType,
   Payment,
   PaymentMethod,
+  Subscription,
   Tariff,
 } from "./types";
 import { clampPayment, computeFinalPrice } from "@/lib/domain/pricing";
@@ -208,6 +209,86 @@ export async function deletePayment(
       amount: before.amount,
       client: before.clientName,
       code: before.code,
+    },
+  });
+}
+
+/* -------------------- cancelling and deleting a tariff ------------------- */
+
+/**
+ * Calls a subscription off without erasing that it happened.
+ *
+ * Cancelling is the reversible half of the pair: the row stays, its dates stay,
+ * and any payments against it stay, but `derivedStatus` reports it cancelled
+ * and `listDebtors` stops chasing it. Nothing is owed on something called off.
+ *
+ * This is what you want when a member stops coming mid-term. Deleting is for
+ * a subscription that should never have been recorded at all.
+ */
+export async function cancelSubscription(
+  id: string,
+  before: Subscription,
+  actor: Actor,
+  reason: string,
+): Promise<void> {
+  const { updateDoc } = await import("firebase/firestore");
+  await updateDoc(doc(subscriptionsRef(), id), {
+    status: "cancelled",
+    note: reason.trim() || before.note,
+    updatedAt: now(),
+  });
+
+  writeAudit({
+    actor,
+    action: "cancel",
+    entity: "subscription",
+    entityId: id,
+    before: { status: before.status, client: before.clientName },
+    after: { status: "cancelled" },
+    reason: reason.trim() || null,
+  });
+}
+
+/**
+ * Erases a subscription, and optionally the payments taken against it.
+ *
+ * The two are separable on purpose. Deleting the subscription alone leaves its
+ * payments standing as money the gym genuinely received, which is usually the
+ * honest record. Deleting both is for a sale entered by mistake, where the
+ * money never changed hands either.
+ */
+export async function deleteSubscription(
+  id: string,
+  before: Subscription,
+  actor: Actor,
+  options: { withPayments: boolean } = { withPayments: false },
+): Promise<void> {
+  const { deleteDoc, getDocs, query, where, writeBatch } = await import(
+    "firebase/firestore"
+  );
+
+  if (options.withPayments) {
+    const snap = await getDocs(
+      query(paymentsRef(), where("subscriptionId", "==", id)),
+    );
+    const batch = writeBatch(db());
+    for (const d of snap.docs) batch.delete(d.ref);
+    batch.delete(doc(subscriptionsRef(), id));
+    await batch.commit();
+  } else {
+    await deleteDoc(doc(subscriptionsRef(), id));
+  }
+
+  writeAudit({
+    actor,
+    action: "delete",
+    entity: "subscription",
+    entityId: id,
+    before: {
+      client: before.clientName,
+      tariff: before.tariffName,
+      code: before.code,
+      withPayments: options.withPayments,
     },
   });
 }

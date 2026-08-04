@@ -3,11 +3,14 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { toast } from "sonner";
 import {
   ArrowLeftIcon,
   PencilSimpleIcon,
+  ProhibitIcon,
   ReceiptIcon,
   TagIcon,
+  TrashIcon,
   UserIcon,
 } from "@phosphor-icons/react";
 
@@ -18,7 +21,13 @@ import {
   listSubscriptionsForClient,
   listTariffs,
 } from "@/lib/db/queries";
-import { paidBySubscription } from "@/lib/db/money-mutations";
+import {
+  cancelSubscription,
+  deleteSubscription,
+  paidBySubscription,
+} from "@/lib/db/money-mutations";
+import { useAuth } from "@/lib/auth/auth-context";
+import { useConfirm } from "@/components/ui/use-confirm";
 import { computeDebt } from "@/lib/domain/pricing";
 import { useResource } from "@/lib/db/use-resource";
 import { derivedStatus } from "@/lib/domain/subscription";
@@ -31,12 +40,16 @@ import { PurchaseHistory } from "@/components/app/purchase-history";
 import { subscriptionReceipt, type Receipt } from "@/lib/domain/receipt";
 import type { Subscription } from "@/lib/db/types";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { Pagination, usePagination } from "@/components/ui/pagination";
 
 export default function ClientDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const { staff } = useAuth();
+  const actor = staff ? { id: staff.id, email: staff.email } : null;
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [editOpen, setEditOpen] = useState(false);
   const [sellOpen, setSellOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
@@ -74,6 +87,30 @@ export default function ClientDetailPage() {
   }
 
   const { client, subs, settings, tariffs, payments } = data;
+
+  async function handleCancel(sub: Subscription) {
+    try {
+      await cancelSubscription(sub.id, sub, actor, "");
+      toast.success("Abonement bekor qilindi");
+      reload();
+    } catch {
+      toast.error("Bekor qilib bo'lmadi");
+    }
+  }
+
+  async function handleDeleteSub(sub: Subscription, withPayments: boolean) {
+    try {
+      await deleteSubscription(sub.id, sub, actor, { withPayments });
+      toast.success(
+        withPayments
+          ? "Abonement va to'lovlari o'chirildi"
+          : "Abonement o'chirildi",
+      );
+      reload();
+    } catch {
+      toast.error("O'chirib bo'lmadi");
+    }
+  }
   const today = dateKey();
   const fullName = `${client.firstName} ${client.lastName ?? ""}`.trim();
   const paidMap = paidBySubscription(payments);
@@ -130,7 +167,30 @@ export default function ClientDetailPage() {
           setPayTarget(target);
           setPayOpen(true);
         }}
+        onCancel={(sub) =>
+          confirm({
+            title: `${sub.tariffName} bekor qilinsinmi?`,
+            description:
+              "Yozuv saqlanib qoladi, lekin qarzdorlik ro'yxatidan chiqadi va muddati hisoblanmaydi.",
+            confirmLabel: "Bekor qilish",
+            run: () => handleCancel(sub),
+          })
+        }
+        onDelete={(sub) =>
+          confirm({
+            title: `${sub.tariffName} o'chirilsinmi?`,
+            description:
+              "Abonement butunlay o'chadi. Unga qilingan to'lovlar saqlanib qoladi.",
+            option: {
+              label: "Bu abonementga qilingan to'lovlarni ham o'chirish",
+              hint: "Faqat xato kiritilgan, puli olinmagan sotuv uchun.",
+            },
+            run: ({ withOption }) => handleDeleteSub(sub, withOption),
+          })
+        }
       />
+
+      {confirmDialog}
 
       <PurchaseHistory clientId={client.id} />
 
@@ -174,6 +234,8 @@ function SubscriptionHistory({
   paidMap,
   onReceipt,
   onPay,
+  onCancel,
+  onDelete,
 }: {
   subs: Subscription[];
   today: string;
@@ -181,6 +243,8 @@ function SubscriptionHistory({
   paidMap: Map<string, number>;
   onReceipt: (receipt: Receipt) => void;
   onPay: (target: PaymentTarget) => void;
+  onCancel: (sub: Subscription) => void;
+  onDelete: (sub: Subscription) => void;
 }) {
   const paged = usePagination(subs, 8);
 
@@ -206,32 +270,39 @@ function SubscriptionHistory({
                 const status = derivedStatus(sub, today, warningDays);
                 const discounted = sub.finalPrice !== sub.originalPrice;
                 const paid = paidMap.get(sub.id) ?? 0;
-                const debt =
-                  sub.status === "cancelled"
-                    ? 0
-                    : computeDebt(sub.finalPrice, paid);
+                const cancelled = sub.status === "cancelled";
+                const debt = cancelled ? 0 : computeDebt(sub.finalPrice, paid);
                 return (
                   <li
                     key={sub.id}
                     className={cn(
                       "flex flex-wrap items-center justify-between gap-3 px-3 py-2.5",
                       debt > 0 && "border-l-2 border-l-status-debt-edge",
+                      // A called-off sale is history, not something to act on.
+                      cancelled && "text-muted-foreground",
                     )}
                   >
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">
-                        {sub.tariffName}
+                      <p className="flex items-center gap-2 truncate text-sm font-medium">
+                        <span className={cn("truncate", cancelled && "line-through")}>
+                          {sub.tariffName}
+                        </span>
+                        {cancelled ? (
+                          <Badge variant="neutral">Bekor qilingan</Badge>
+                        ) : null}
                       </p>
                       {/* Expiry is carried by colour on the date itself, so the
                           row stays a date rather than a date plus a label. */}
                       <p
                         className={cn(
                           "nums mt-0.5 text-xs",
-                          status === "expired"
-                            ? "font-medium text-destructive"
-                            : status === "expiring"
-                              ? "text-status-warning-foreground"
-                              : "text-muted-foreground",
+                          cancelled
+                            ? "text-muted-foreground"
+                            : status === "expired"
+                              ? "font-medium text-destructive"
+                              : status === "expiring"
+                                ? "text-status-warning-foreground"
+                                : "text-muted-foreground",
                         )}
                       >
                         {formatDateKey(sub.startDate)}
@@ -262,6 +333,32 @@ function SubscriptionHistory({
                         onClick={() => onReceipt(subscriptionReceipt(sub, paid))}
                       >
                         <ReceiptIcon />
+                      </Button>
+
+                      {/* Cancelling is the reversible half - the record stays
+                          and stops being chased. Deleting is not, so it sits
+                          last and reads destructive. */}
+                      {sub.status !== "cancelled" ? (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`${sub.tariffName} ni bekor qilish`}
+                          title="Bekor qilish"
+                          onClick={() => onCancel(sub)}
+                        >
+                          <ProhibitIcon />
+                        </Button>
+                      ) : null}
+
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`${sub.tariffName} ni o'chirish`}
+                        title="O'chirish"
+                        className="text-muted-foreground hover:text-destructive"
+                        onClick={() => onDelete(sub)}
+                      >
+                        <TrashIcon />
                       </Button>
 
                       {debt > 0 ? (
