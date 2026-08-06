@@ -42,7 +42,14 @@ import { useConfirm } from "@/components/ui/use-confirm";
 /** A member plus the end date of their current subscription. */
 type Row = Client & {
   subStatus: DerivedSubscriptionStatus | null;
+  subStart: string | null;
   subEnd: string | null;
+  /**
+   * What they are on right now, as the subscription recorded it. Read from the
+   * subscription rather than the tariff it points at, so renaming or repricing
+   * a tariff never rewrites what someone was actually sold.
+   */
+  tariff: string | null;
   /** Total still owed across all of this member's subscriptions. */
   debt: number;
 };
@@ -119,7 +126,9 @@ export default function ClientsPage() {
       return {
         ...c,
         subStatus: sub ? derivedStatus(sub, today, warn) : null,
+        subStart: sub?.startDate ?? null,
         subEnd: sub?.endDate ?? null,
+        tariff: sub?.tariffName ?? null,
         debt: owed.get(c.id) ?? 0,
       };
     });
@@ -136,7 +145,11 @@ export default function ClientsPage() {
       return (
         name.includes(query) ||
         (r.phone ?? "").includes(query) ||
-        String(r.code).includes(query)
+        String(r.code).includes(query) ||
+        // Searchable too, so "premium" pulls up everyone on that tariff.
+        // The column is on screen; not being able to filter by it would be
+        // the odd part.
+        (r.tariff ?? "").toLowerCase().includes(query)
       );
     });
   }, [rows, query, tab]);
@@ -226,26 +239,63 @@ export default function ClientsPage() {
         ),
       },
       {
+        id: "tariff",
+        header: "Tarif",
+        accessorFn: (r) => r.tariff ?? "",
+        cell: ({ row }) =>
+          row.original.tariff ? (
+            <span
+              className={cn(
+                overdue(row.original)
+                  ? "text-destructive"
+                  : "text-muted-foreground",
+              )}
+            >
+              {row.original.tariff}
+            </span>
+          ) : (
+            <span className="text-xs text-muted-foreground">-</span>
+          ),
+      },
+      {
         id: "subscription",
         header: "Abonement",
+        // Sorted on the end date: what the desk chases is who runs out next,
+        // not who started first.
         accessorFn: (r) => r.subEnd ?? "",
         cell: ({ row }) => {
-          const { subStatus, subEnd } = row.original;
-          if (!subEnd) {
+          const { subStatus, subStart, subEnd } = row.original;
+          if (!subEnd && !subStart) {
             return <span className="text-xs text-muted-foreground">-</span>;
           }
           return (
-            <span
-              className={cn(
-                "nums",
-                subStatus === "expired"
-                  ? "font-medium text-destructive"
-                  : subStatus === "expiring"
-                    ? "text-status-warning-foreground"
-                    : "text-muted-foreground",
-              )}
-            >
-              {formatDateKey(subEnd)}
+            <span className="nums">
+              {subStart ? (
+                <span className="text-muted-foreground">
+                  {formatDateKey(subStart)}
+                </span>
+              ) : null}
+              {subStart && subEnd ? (
+                <span aria-hidden className="px-1 text-muted-foreground/50">
+                  –
+                </span>
+              ) : null}
+              {/* Only the end date carries the status colour. Running out is
+                  something the end date does; tinting the start as well would
+                  say the whole membership is a problem. */}
+              {subEnd ? (
+                <span
+                  className={cn(
+                    subStatus === "expired"
+                      ? "font-medium text-destructive"
+                      : subStatus === "expiring"
+                        ? "text-status-warning-foreground"
+                        : "text-muted-foreground",
+                  )}
+                >
+                  {formatDateKey(subEnd)}
+                </span>
+              ) : null}
             </span>
           );
         },
