@@ -4,8 +4,6 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { getDocs } from "firebase/firestore";
 import {
-  CaretDownIcon,
-  CaretUpIcon,
   PackageIcon,
   PencilSimpleIcon,
   PlusIcon,
@@ -23,10 +21,8 @@ import { ProductFormDialog } from "@/components/app/product-form-dialog";
 import { Button } from "@/components/ui/button";
 import { SkeletonRows } from "@/components/ui/skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/states";
-import { Pagination, usePagination } from "@/components/ui/pagination";
 import { useConfirm } from "@/components/ui/use-confirm";
-
-const PAGE_SIZE = 10;
+import { useDragReorder } from "@/components/ui/use-drag-reorder";
 
 async function listAllProducts(): Promise<Product[]> {
   // Sorted here rather than with `orderBy("position")`, which would silently
@@ -54,28 +50,21 @@ export function ProductSection() {
     [],
   );
   const products = data ?? [];
-  const paged = usePagination(products, PAGE_SIZE);
 
   /**
-   * Moves a product one place up or down the catalogue.
+   * Moves a product to another place in the catalogue.
    *
    * The order is the desk's, not the alphabet's: the picker on the daily sheet
    * reads the same list, so putting the things sold most often at the top is
    * worth more than being able to find a name by scanning.
    */
-  async function handleMove(product: Product, delta: -1 | 1) {
-    const from = products.findIndex((p) => p.id === product.id);
-    const to = from + delta;
-    if (from < 0 || to < 0 || to >= products.length) return;
+  async function handleMove(from: number, to: number) {
+    if (from === to || to < 0 || to >= products.length) return;
 
     // Positions are left stale on `moved` so the write can tell what actually
     // changed; the copy shown on screen is renumbered to match its new order.
     const moved = reorder(products, from, to);
     mutate(() => moved.map((p, i) => ({ ...p, position: i + 1 })));
-
-    // Follow it across a page boundary. Without this, nudging the last item on
-    // a page down reads as the product having been deleted.
-    paged.setPage(Math.floor(to / PAGE_SIZE));
 
     try {
       await setProductOrder(moved);
@@ -84,6 +73,13 @@ export function ProductSection() {
       toast.error("Tartibni saqlab bo'lmadi");
     }
   }
+
+  const { drag, listRef, handlers } = useDragReorder(handleMove);
+
+  // While a row is in hand the list shows where it would land, so the drop is
+  // a confirmation of what is already on screen rather than a guess.
+  const shown = drag ? reorder(products, drag.from, drag.to) : products;
+  const grabbedId = drag ? products[drag.from]?.id : null;
 
   /**
    * Deleted outright rather than archived. Sheet rows snapshot the product
@@ -106,8 +102,8 @@ export function ProductSection() {
         <div>
           <h3 className="text-sm font-semibold tracking-tight">Mahsulotlar</h3>
           <p className="text-xs text-muted-foreground">
-            Kunlik varaqada mijozga biriktiriladi. Tartibni o&apos;zingiz
-            belgilaysiz
+            Kunlik varaqada mijozga biriktiriladi. Tartibni o&apos;zgartirish
+            uchun satrni sudrang
           </p>
         </div>
         <Button
@@ -146,20 +142,41 @@ export function ProductSection() {
             }
           />
         ) : (
-          <ul className="divide-y divide-grid-line">
-            {/* Banded rows. The stripe is keyed off the page index rather than
-                `odd:`, so paging forward never flips every band over. */}
-            {paged.pageItems.map((p, i) => {
-              // Its place in the whole catalogue, not on this page: the ends
-              // that cannot move are the list's, not the page's.
-              const index = paged.page * PAGE_SIZE + i;
-              return (
+          <ul
+            ref={listRef}
+            className={cn(
+              "divide-y divide-grid-line",
+              // Only while a row is in hand: the rest of the time a finger has
+              // to be able to scroll this list like any other.
+              drag && "touch-none select-none",
+            )}
+          >
+            {shown.map((p, i) => (
               <li
                 key={p.id}
+                {...handlers(i)}
+                tabIndex={0}
+                // Keyboard reordering, with nothing on screen to say so. The
+                // arrows that used to do this were removed; this costs two
+                // lines and keeps the list usable without a pointer.
+                onKeyDown={(e) => {
+                  if (!e.altKey) return;
+                  if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    void handleMove(i, i - 1);
+                  } else if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    void handleMove(i, i + 1);
+                  }
+                }}
                 className={cn(
                   "flex flex-wrap items-center justify-between gap-3 px-3 py-2.5",
-                  "transition-colors hover:bg-grid-row-hover",
-                  index % 2 === 1 && "bg-grid-row-alt",
+                  "cursor-grab transition-colors outline-none",
+                  "focus-visible:-outline-offset-2 focus-visible:outline-2 focus-visible:outline-brand",
+                  i % 2 === 1 && "bg-grid-row-alt",
+                  p.id === grabbedId
+                    ? "cursor-grabbing bg-brand/10 shadow-sm"
+                    : "hover:bg-grid-row-hover",
                 )}
               >
                 <span className="truncate text-sm font-medium">{p.name}</span>
@@ -168,28 +185,6 @@ export function ProductSection() {
                   <span className="nums text-sm font-medium">
                     {formatSom(p.sellPrice)}
                   </span>
-                  <div className="flex items-center">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`${p.name} ni yuqoriga surish`}
-                      title="Yuqoriga"
-                      disabled={index === 0}
-                      onClick={() => handleMove(p, -1)}
-                    >
-                      <CaretUpIcon />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`${p.name} ni pastga surish`}
-                      title="Pastga"
-                      disabled={index === products.length - 1}
-                      onClick={() => handleMove(p, 1)}
-                    >
-                      <CaretDownIcon />
-                    </Button>
-                  </div>
                   <Button
                     variant="ghost"
                     size="icon-sm"
@@ -219,13 +214,10 @@ export function ProductSection() {
                   </Button>
                 </div>
               </li>
-              );
-            })}
+            ))}
           </ul>
         )}
       </div>
-
-      <Pagination {...paged} onPageChange={paged.setPage} />
 
       {confirmDialog}
 
