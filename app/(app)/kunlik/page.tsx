@@ -43,7 +43,7 @@ import {
 } from "@/lib/db/types";
 import { useResource } from "@/lib/db/use-resource";
 import { derivedStatus } from "@/lib/domain/subscription";
-import { gymFeeModeFor } from "@/lib/domain/gym-fee";
+import { DAILY_FEE, gymFeeModeFor } from "@/lib/domain/gym-fee";
 import { dailyReceipt } from "@/lib/domain/receipt";
 import {
   addDays,
@@ -620,7 +620,7 @@ export default function DailySheetPage() {
         open={chargeRow !== null}
         onOpenChange={(open) => !open && setChargeRow(null)}
         clientName={chargeRow?.clientName ?? ""}
-        baseFee={data?.settings.dailyFee ?? 0}
+        baseFee={DAILY_FEE}
         onConfirm={(amount) => handleChargeDay(chargeRow!, amount)}
       />
 

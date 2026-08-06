@@ -1,6 +1,17 @@
 import type { DailySheetRow, GymFeeMode } from "@/lib/db/types";
 
 /**
+ * What one day on the floor costs.
+ *
+ * A constant rather than a setting: the gym has one day rate, it has not
+ * changed, and putting it in Sozlamalar bought a form nobody was going to
+ * open. The dialog fills it in as an offer and the desk types over it when a
+ * particular day is priced differently, so a rate change means editing this
+ * line — not a member paying the wrong amount in the meantime.
+ */
+export const DAILY_FEE = 50_000;
+
+/**
  * How a floor-fee cell should read once an amount has been typed into it.
  *
  * An amount always means cash was charged. Zero is the interesting case: it

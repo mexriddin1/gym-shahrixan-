@@ -40,7 +40,7 @@ export function DailyChargeDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   clientName: string;
-  /** The gym's day rate, from Sozlamalar. Offered, not imposed. */
+  /** The gym's day rate. Offered as a starting point, not imposed. */
   baseFee: number;
   onConfirm: (amount: number) => Promise<void>;
 }) {

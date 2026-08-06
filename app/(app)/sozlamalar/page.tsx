@@ -9,11 +9,9 @@ import { isValidPinFormat, PIN_LENGTH } from "@/lib/auth/pin";
 import { PageHeader } from "@/components/app/app-shell";
 import { TariffSection } from "@/components/app/tariff-section";
 import { ProductSection } from "@/components/app/product-section";
-import { DailyFeeSection } from "@/components/app/daily-fee-section";
 import { ReceiptSettingsSection } from "@/components/app/receipt-settings-section";
 import { SheetColumnSection } from "@/components/app/sheet-column-section";
 import { getSettings } from "@/lib/db/queries";
-import { DEFAULT_SETTINGS } from "@/lib/db/types";
 import { useResource } from "@/lib/db/use-resource";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,21 +26,12 @@ export default function SettingsPage() {
     <div className="max-w-3xl space-y-6">
       <PageHeader
         title="Sozlamalar"
-        subtitle="Tariflar, mahsulotlar, kunlik narx, jadval ustunlari, chek va PIN kod"
+        subtitle="Tariflar, mahsulotlar, jadval ustunlari, chek va PIN kod"
       />
 
       <TariffSection />
 
       <ProductSection />
-
-      {/* Keyed on the saved value so the form picks it up once settings land;
-          its input holds a draft, which a prop change alone would not replace. */}
-      <DailyFeeSection
-        key={settings.data?.dailyFee}
-        dailyFee={settings.data?.dailyFee ?? DEFAULT_SETTINGS.dailyFee}
-        actor={actor}
-        onSaved={settings.reload}
-      />
 
       <SheetColumnSection
         columns={settings.data?.sheetColumns ?? []}
