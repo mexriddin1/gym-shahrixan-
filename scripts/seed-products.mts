@@ -72,6 +72,9 @@ for (const [i, p] of flat.entries()) {
   const code = COUNTER_START.products + i;
   batch.set(doc(db, `products/product-${slug(p.name)}`), {
     code,
+    // The catalogue opens in the order written here, grouped by category.
+    // Staff reshuffle it from Sozlamalar afterwards.
+    position: i + 1,
     name: p.name,
     category: p.category,
     barcode: null,

@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { getDocs, orderBy, query } from "firebase/firestore";
+import { getDocs } from "firebase/firestore";
 import {
+  CaretDownIcon,
+  CaretUpIcon,
   PackageIcon,
   PencilSimpleIcon,
   PlusIcon,
@@ -12,9 +14,10 @@ import {
 
 import { useAuth } from "@/lib/auth/auth-context";
 import { productsRef } from "@/lib/db/collections";
-import { deleteProduct } from "@/lib/db/mutations";
+import { deleteProduct, setProductOrder } from "@/lib/db/mutations";
 import type { Product } from "@/lib/db/types";
 import { useResource } from "@/lib/db/use-resource";
+import { byCatalogueOrder, reorder } from "@/lib/domain/catalogue";
 import { cn, formatSom } from "@/lib/utils";
 import { ProductFormDialog } from "@/components/app/product-form-dialog";
 import { Button } from "@/components/ui/button";
@@ -23,9 +26,13 @@ import { EmptyState, ErrorState } from "@/components/ui/states";
 import { Pagination, usePagination } from "@/components/ui/pagination";
 import { useConfirm } from "@/components/ui/use-confirm";
 
+const PAGE_SIZE = 10;
+
 async function listAllProducts(): Promise<Product[]> {
-  const snap = await getDocs(query(productsRef(), orderBy("name")));
-  return snap.docs.map((d) => d.data());
+  // Sorted here rather than with `orderBy("position")`, which would silently
+  // drop any product that has not been given a position yet.
+  const snap = await getDocs(productsRef());
+  return snap.docs.map((d) => d.data()).sort(byCatalogueOrder);
 }
 
 /**
@@ -42,9 +49,41 @@ export function ProductSection() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
 
-  const { data, loading, error, reload } = useResource(() => listAllProducts(), []);
+  const { data, loading, error, reload, mutate } = useResource(
+    () => listAllProducts(),
+    [],
+  );
   const products = data ?? [];
-  const paged = usePagination(products, 10);
+  const paged = usePagination(products, PAGE_SIZE);
+
+  /**
+   * Moves a product one place up or down the catalogue.
+   *
+   * The order is the desk's, not the alphabet's: the picker on the daily sheet
+   * reads the same list, so putting the things sold most often at the top is
+   * worth more than being able to find a name by scanning.
+   */
+  async function handleMove(product: Product, delta: -1 | 1) {
+    const from = products.findIndex((p) => p.id === product.id);
+    const to = from + delta;
+    if (from < 0 || to < 0 || to >= products.length) return;
+
+    // Positions are left stale on `moved` so the write can tell what actually
+    // changed; the copy shown on screen is renumbered to match its new order.
+    const moved = reorder(products, from, to);
+    mutate(() => moved.map((p, i) => ({ ...p, position: i + 1 })));
+
+    // Follow it across a page boundary. Without this, nudging the last item on
+    // a page down reads as the product having been deleted.
+    paged.setPage(Math.floor(to / PAGE_SIZE));
+
+    try {
+      await setProductOrder(moved);
+    } catch {
+      mutate(() => products);
+      toast.error("Tartibni saqlab bo'lmadi");
+    }
+  }
 
   /**
    * Deleted outright rather than archived. Sheet rows snapshot the product
@@ -67,7 +106,8 @@ export function ProductSection() {
         <div>
           <h3 className="text-sm font-semibold tracking-tight">Mahsulotlar</h3>
           <p className="text-xs text-muted-foreground">
-            Kunlik varaqada mijozga biriktiriladi
+            Kunlik varaqada mijozga biriktiriladi. Tartibni o&apos;zingiz
+            belgilaysiz
           </p>
         </div>
         <Button
@@ -109,13 +149,17 @@ export function ProductSection() {
           <ul className="divide-y divide-grid-line">
             {/* Banded rows. The stripe is keyed off the page index rather than
                 `odd:`, so paging forward never flips every band over. */}
-            {paged.pageItems.map((p, i) => (
+            {paged.pageItems.map((p, i) => {
+              // Its place in the whole catalogue, not on this page: the ends
+              // that cannot move are the list's, not the page's.
+              const index = paged.page * PAGE_SIZE + i;
+              return (
               <li
                 key={p.id}
                 className={cn(
                   "flex flex-wrap items-center justify-between gap-3 px-3 py-2.5",
                   "transition-colors hover:bg-grid-row-hover",
-                  (paged.page * 10 + i) % 2 === 1 && "bg-grid-row-alt",
+                  index % 2 === 1 && "bg-grid-row-alt",
                 )}
               >
                 <span className="truncate text-sm font-medium">{p.name}</span>
@@ -124,6 +168,28 @@ export function ProductSection() {
                   <span className="nums text-sm font-medium">
                     {formatSom(p.sellPrice)}
                   </span>
+                  <div className="flex items-center">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`${p.name} ni yuqoriga surish`}
+                      title="Yuqoriga"
+                      disabled={index === 0}
+                      onClick={() => handleMove(p, -1)}
+                    >
+                      <CaretUpIcon />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`${p.name} ni pastga surish`}
+                      title="Pastga"
+                      disabled={index === products.length - 1}
+                      onClick={() => handleMove(p, 1)}
+                    >
+                      <CaretDownIcon />
+                    </Button>
+                  </div>
                   <Button
                     variant="ghost"
                     size="icon-sm"
@@ -153,7 +219,8 @@ export function ProductSection() {
                   </Button>
                 </div>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </div>

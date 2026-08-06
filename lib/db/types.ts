@@ -198,6 +198,11 @@ export type Product = {
   id: string;
   code: number;
   name: string;
+  /**
+   * Where this sits in the catalogue, 1-based. Set by staff in Sozlamalar and
+   * renumbered on every move, so it never carries gaps or duplicates.
+   */
+  position: number;
   category: string | null;
   barcode: string | null;
   costPrice: number;

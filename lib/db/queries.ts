@@ -33,6 +33,7 @@ import type {
   Tariff,
 } from "./types";
 import { DEFAULT_SETTINGS } from "./types";
+import { byCatalogueOrder } from "@/lib/domain/catalogue";
 import { computeDebt } from "@/lib/domain/pricing";
 import { addDays, dateKey } from "@/lib/utils";
 
@@ -80,10 +81,12 @@ export async function getClient(id: string): Promise<Client | null> {
 
 export async function listActiveProducts(): Promise<Product[]> {
   const snap = await getDocs(productsRef());
+  // Sorted here rather than with `orderBy("position")`, which would silently
+  // drop any product that has not been given a position yet.
   return snap.docs
     .map((d) => d.data())
     .filter((p) => p.status === "active")
-    .sort((a, b) => a.name.localeCompare(b.name, "uz"));
+    .sort(byCatalogueOrder);
 }
 
 export async function listTariffs(): Promise<Tariff[]> {

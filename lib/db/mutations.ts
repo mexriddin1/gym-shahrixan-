@@ -282,11 +282,21 @@ export async function createProduct(
 ): Promise<string> {
   const ref = doc(productsRef());
 
+  // Read before the transaction, not inside it: the client SDK cannot run a
+  // query in a transaction, only fetch documents by reference. A product
+  // created at the same moment as another could land on a duplicate position,
+  // which the catalogue order tolerates - it falls back to name - and the next
+  // move in Sozlamalar renumbers away.
+  const existing = await getDocs(productsRef());
+  const position =
+    existing.docs.reduce((max, d) => Math.max(max, d.data().position ?? 0), 0) + 1;
+
   await runTransaction(db(), async (tx) => {
     const code = await allocateCode(tx, "products");
     tx.set(ref, {
       ...input,
       code,
+      position,
       qty: 0,
       createdBy: actor?.id ?? null,
       createdAt: now(),
@@ -329,6 +339,30 @@ export async function updateProduct(
  * Sheet rows snapshot the product name and price when something is sold, so a
  * past day's takings survive the product being removed from the catalogue.
  */
+/**
+ * Writes the catalogue order set in Sozlamalar.
+ *
+ * Renumbered from 1 on every save, so the positions never accumulate gaps or
+ * duplicates however many times the list is shuffled. Only the products that
+ * actually moved are written: nudging one item near the top of a long list
+ * costs two writes, not the whole catalogue.
+ */
+export async function setProductOrder(
+  ordered: readonly Product[],
+): Promise<void> {
+  const moved = ordered
+    .map((product, i) => ({ product, position: i + 1 }))
+    .filter((x) => x.product.position !== x.position);
+
+  if (moved.length === 0) return;
+
+  const batch = writeBatch(db());
+  for (const { product, position } of moved) {
+    batch.update(doc(productsRef(), product.id), { position, updatedAt: now() });
+  }
+  await batch.commit();
+}
+
 export async function deleteProduct(
   id: string,
   before: Product,
