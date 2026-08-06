@@ -43,6 +43,7 @@ import {
 } from "@/lib/db/types";
 import { useResource } from "@/lib/db/use-resource";
 import { derivedStatus } from "@/lib/domain/subscription";
+import { gymFeeModeFor } from "@/lib/domain/gym-fee";
 import { dailyReceipt } from "@/lib/domain/receipt";
 import {
   addDays,
@@ -57,6 +58,7 @@ import { MoneyCell } from "@/components/grid/money-cell";
 import { NewRowInput } from "@/components/grid/new-row-input";
 import { PageHeader } from "@/components/app/app-shell";
 import { AddItemDialog } from "@/components/app/add-item-dialog";
+import { DailyChargeDialog } from "@/components/app/daily-charge-dialog";
 import { ReceiptDialog } from "@/components/app/receipt-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -79,6 +81,7 @@ export default function DailySheetPage() {
   const { confirm, dialog: confirmDialog } = useConfirm();
   const [itemRow, setItemRow] = useState<DailySheetRow | null>(null);
   const [receiptRow, setReceiptRow] = useState<DailySheetRow | null>(null);
+  const [chargeRow, setChargeRow] = useState<DailySheetRow | null>(null);
   const { staff } = useAuth();
   // Memoised so the add-row callbacks below keep a stable identity; a fresh
   // object literal here would rebuild them on every render.
@@ -158,17 +161,15 @@ export default function DailySheetPage() {
               : row.discount;
       if (previous === next) return;
 
+      const gymMode = (value: number) => gymFeeModeFor(value, row, covered);
+
       // Optimistic: the desk should never wait on a round trip to see a number
       // it just typed. Rolled back below if the write fails.
       const apply = (value: number) => (r: DailySheetRow) => {
         if (r.id !== row.id) return r;
         if (colIndex === COL_KEY) return { ...r, keyNumber: value || null };
         if (colIndex === COL_GYM) {
-          return {
-            ...r,
-            gymFee: value,
-            gymFeeMode: (value > 0 ? "cash" : "none") as DailySheetRow["gymFeeMode"],
-          };
+          return { ...r, gymFee: value, gymFeeMode: gymMode(value) };
         }
         if (isExtra) {
           const extras = { ...r.extras };
@@ -188,7 +189,7 @@ export default function DailySheetPage() {
         if (colIndex === COL_KEY) {
           await setRowKeyNumber(date, row.id, next || null);
         } else if (colIndex === COL_GYM) {
-          await setRowGymFee(date, row.id, next > 0 ? "cash" : "none", next);
+          await setRowGymFee(date, row.id, gymMode(next), next);
         } else if (isExtra) {
           await setRowExtra(date, row.id, extra.id, next, row.extras?.[extra.id]);
         } else {
@@ -202,7 +203,7 @@ export default function DailySheetPage() {
         toast.error("Saqlab bo'lmadi. Qayta urinib ko'ring.");
       }
     },
-    [rows, date, mutate, extraColumns, colDiscount],
+    [rows, date, mutate, extraColumns, colDiscount, covered],
   );
 
   /** Adds a member to the sheet, defaulting the floor fee from their subscription. */
@@ -284,6 +285,38 @@ export default function DailySheetPage() {
     } catch {
       toast.error("O'chirib bo'lmadi");
       reload();
+    }
+  }
+
+  /**
+   * Charges a monthly member for a single day, on this sheet only.
+   *
+   * The subscription is deliberately left alone. A fourth visit in a week the
+   * monthly rate covers three of is a day bought at the desk, not a change to
+   * what the member is on — so it lives on the row, and tomorrow's sheet reads
+   * "oylik" again.
+   */
+  async function handleChargeDay(row: DailySheetRow, amount: number) {
+    const swap =
+      (mode: DailySheetRow["gymFeeMode"], gymFee: number) =>
+      (r: DailySheetRow) =>
+        r.id === row.id ? { ...r, gymFeeMode: mode, gymFee } : r;
+
+    mutate((current) => ({
+      ...current,
+      rows: current.rows.map(swap("cash", amount)),
+    }));
+
+    try {
+      await setRowGymFee(date, row.id, "cash", amount);
+    } catch {
+      mutate((current) => ({
+        ...current,
+        rows: current.rows.map(swap("subscription", 0)),
+      }));
+      toast.error("Saqlab bo'lmadi");
+      // Rethrown so the dialog stays open with the amount still in it.
+      throw new Error("gym fee write failed");
     }
   }
 
@@ -480,6 +513,7 @@ export default function DailySheetPage() {
                   onOpenItems={() => setItemRow(row)}
                   onRemoveItem={(lineId) => handleRemoveItem(row, lineId)}
                   onOpenReceipt={() => setReceiptRow(row)}
+                  onChargeDay={() => setChargeRow(row)}
                   onDeleteRow={() =>
                     confirm({
                       title: `${row.clientName} satri o'chirilsinmi?`,
@@ -582,6 +616,14 @@ export default function DailySheetPage() {
         onAdd={handleAddItem}
       />
 
+      <DailyChargeDialog
+        open={chargeRow !== null}
+        onOpenChange={(open) => !open && setChargeRow(null)}
+        clientName={chargeRow?.clientName ?? ""}
+        baseFee={data?.settings.dailyFee ?? 0}
+        onConfirm={(amount) => handleChargeDay(chargeRow!, amount)}
+      />
+
       {data ? (
         <ReceiptDialog
           open={receiptRow !== null}
@@ -608,6 +650,7 @@ function SheetRow({
   onOpenItems,
   onRemoveItem,
   onOpenReceipt,
+  onChargeDay,
   onDeleteRow,
   onToggleGymFeePaid,
   onToggleItemPaid,
@@ -624,6 +667,7 @@ function SheetRow({
   onOpenItems: () => void;
   onRemoveItem: (lineId: string) => void;
   onOpenReceipt: () => void;
+  onChargeDay: () => void;
   onDeleteRow: () => void;
   onToggleGymFeePaid: () => void;
   onToggleItemPaid: (lineId: string) => void;
@@ -680,7 +724,15 @@ function SheetRow({
       />
 
       {onSubscription ? (
-        <Td className="text-right text-status-active-foreground">oylik</Td>
+        <SubscriptionCell
+          cellRef={nav.register(rowIndex, COL_GYM)}
+          tabIndex={nav.isFocused(rowIndex, COL_GYM) ? 0 : -1}
+          focused={nav.isFocused(rowIndex, COL_GYM)}
+          onKeyDown={(e) => nav.handleKeyDown(e, { row: rowIndex, col: COL_GYM })}
+          onFocus={() => nav.setFocused({ row: rowIndex, col: COL_GYM })}
+          onCharge={onChargeDay}
+          label={`${row.clientName}, to'lov`}
+        />
       ) : (
         <MoneyCell
           {...cell(COL_GYM)}
@@ -806,6 +858,66 @@ function SheetRow({
         </button>
       </Td>
     </tr>
+  );
+}
+
+/**
+ * The floor-fee cell for a member whose subscription covers today.
+ *
+ * Reads as a label because there is normally nothing to charge. But the
+ * monthly rate only buys three visits a week, so the desk has to be able to
+ * turn it into an amount for a single extra day. It opens the same way every
+ * other cell on this sheet opens — double click, Enter, or just start typing a
+ * number — except that this one asks first, because the answer is about an
+ * agreement rather than a keystroke.
+ */
+function SubscriptionCell({
+  cellRef,
+  tabIndex,
+  focused,
+  onKeyDown,
+  onFocus,
+  onCharge,
+  label,
+}: {
+  cellRef: (el: HTMLElement | null) => void;
+  tabIndex: number;
+  focused: boolean;
+  onKeyDown: (e: React.KeyboardEvent) => void;
+  onFocus: () => void;
+  onCharge: () => void;
+  label: string;
+}) {
+  return (
+    <td
+      ref={cellRef as (el: HTMLTableCellElement | null) => void}
+      role="gridcell"
+      tabIndex={tabIndex}
+      aria-label={`${label}: oylik`}
+      onFocus={onFocus}
+      onClick={(e) => (e.currentTarget as HTMLElement).focus()}
+      onDoubleClick={onCharge}
+      onKeyDown={(e) => {
+        // Enter and digits both mean "put money here", which on this cell is a
+        // question rather than an edit. Handled before the grid sees them, so
+        // neither opens an editor that this cell does not have.
+        if (e.key === "Enter" || (e.key.length === 1 && /\d/.test(e.key))) {
+          e.preventDefault();
+          onCharge();
+          return;
+        }
+        onKeyDown(e);
+      }}
+      title="Ikki marta bosing: bugun uchun kunlik to'lov"
+      className={cn(
+        "h-row cursor-cell px-2 text-right text-xs",
+        "border-r border-grid-line outline-none",
+        "text-status-active-foreground",
+        focused && "bg-grid-cell-focus outline-2 -outline-offset-2 outline-brand",
+      )}
+    >
+      oylik
+    </td>
   );
 }
 

@@ -303,6 +303,14 @@ export type Settings = {
   expiryWarningDays: number;
   receiptFooter: string | null;
   /**
+   * What one day on the floor costs.
+   *
+   * The monthly rate covers three visits a week. A member who comes a fourth
+   * time pays for that day like a walk-in, so the desk needs a price to offer
+   * without looking it up — see the daily sheet's "oylik" cell.
+   */
+  dailyFee: number;
+  /**
    * Extra money columns on the daily sheet, defined by the gym.
    *
    * The sheet ships with the charges every gym has (floor fee, products,
@@ -331,6 +339,7 @@ export const DEFAULT_SETTINGS: Omit<Settings, "updatedAt"> = {
   address: null,
   expiryWarningDays: 3,
   receiptFooter: "Xaridingiz uchun rahmat!",
+  dailyFee: 30_000,
   sheetColumns: [],
 };
 
