@@ -454,7 +454,7 @@ export default function DailySheetPage() {
         // which read as the add having failed.
         <SheetSkeleton />
       ) : (
-        <div className="overflow-x-auto border border-border">
+        <div className="overflow-x-auto border border-border bg-card">
           <table
             role="grid"
             aria-label={`${formatDateKey(date)} kunlik hisob varaqasi`}
@@ -1080,7 +1080,7 @@ function DayTabs({
 
 function SheetSkeleton() {
   return (
-    <div className="overflow-hidden border border-border">
+    <div className="overflow-hidden border border-border bg-card">
       <div className="flex gap-4 border-b border-grid-line bg-grid-header px-3 py-2">
         <Skeleton className="h-3 w-8" />
         <Skeleton className="h-3 w-40" />

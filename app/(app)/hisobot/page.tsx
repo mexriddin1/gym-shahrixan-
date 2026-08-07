@@ -452,7 +452,7 @@ function Section({
   return (
     <section>
       <h3 className="mb-2 text-sm font-semibold tracking-tight">{title}</h3>
-      <div className="overflow-x-auto border border-border">
+      <div className="overflow-x-auto border border-border bg-card">
         {children}
       </div>
     </section>

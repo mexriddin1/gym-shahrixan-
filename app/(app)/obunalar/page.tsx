@@ -145,7 +145,7 @@ function ExpirySection({
         </span>
       </h3>
 
-      <div className="overflow-x-auto border border-border">
+      <div className="overflow-x-auto border border-border bg-card">
         {rows.length === 0 ? (
           empty
         ) : (

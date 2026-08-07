@@ -118,7 +118,7 @@ export function ProductSection() {
         </Button>
       </div>
 
-      <div className="overflow-hidden border border-border">
+      <div className="overflow-hidden border border-border bg-card">
         {error ? (
           <ErrorState message={error} onRetry={reload} />
         ) : loading && !data ? (

@@ -68,7 +68,7 @@ export function DataTable<T>({
 
   if (error) {
     return (
-      <div className="border border-border">
+      <div className="border border-border bg-card">
         <ErrorState message={error} onRetry={onRetry} />
       </div>
     );
@@ -76,14 +76,14 @@ export function DataTable<T>({
 
   if (loading) {
     return (
-      <div className="overflow-hidden border border-border">
+      <div className="overflow-hidden border border-border bg-card">
         <SkeletonRows rows={8} />
       </div>
     );
   }
 
   if (data.length === 0) {
-    return <div className="border border-border">{empty}</div>;
+    return <div className="border border-border bg-card">{empty}</div>;
   }
 
   const rows = table.getRowModel().rows;
@@ -91,7 +91,7 @@ export function DataTable<T>({
 
   return (
     <div className="space-y-3">
-      <div className="overflow-x-auto border border-border">
+      <div className="overflow-x-auto border border-border bg-card">
         <table className="w-full border-collapse text-sm">
           <thead>
             {table.getHeaderGroups().map((group) => (

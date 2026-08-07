@@ -173,7 +173,7 @@ function PinKey({
       disabled={disabled}
       aria-label={label}
       className={cn(
-        "flex h-14 items-center justify-center rounded-lg border border-border",
+        "flex h-14 items-center justify-center rounded-lg border border-border bg-card",
         "text-lg font-medium tabular-nums select-none",
         "transition-[background-color,transform] duration-75 outline-none",
         "hover:bg-muted active:scale-[0.97] active:bg-accent",

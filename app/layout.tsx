@@ -40,12 +40,13 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full`}
     >
       <body className="flex min-h-full flex-col">
-        {/* Dark only. The gym runs this on one screen at a desk, and a theme
-            switch is a setting nobody at that desk needs to think about. */}
+        {/* Dark stays the default - the desk screen runs all day and this is
+            what the staff are used to - but the choice now lives in
+            Sozlamalar, including following whatever the machine is set to. */}
         <ThemeProvider
           attribute="class"
-          forcedTheme="dark"
-          enableSystem={false}
+          defaultTheme="dark"
+          enableSystem
           disableTransitionOnChange
         >
           <AuthProvider>{children}</AuthProvider>

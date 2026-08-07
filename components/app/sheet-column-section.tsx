@@ -91,7 +91,7 @@ export function SheetColumnSection({
         </Button>
       </div>
 
-      <div className="overflow-hidden border border-border">
+      <div className="overflow-hidden border border-border bg-card">
         {ordered.length === 0 ? (
           <EmptyState
             icon={ColumnsPlusRightIcon}

@@ -85,10 +85,19 @@
   --spacing-row-lg: 2.5rem;
 }
 
+/*
+ * Light.
+ *
+ * The page is a soft grey and every surface that holds content - card, table,
+ * dialog, sidebar - is white. That gap is the whole point: an earlier version
+ * had both at pure white, which left tables and cards floating with nothing
+ * but a hairline to say where one ended and the next began. Dark already
+ * worked this way (0.14 page, 0.19 card); light now matches it.
+ */
 :root {
   color-scheme: light;
 
-  --background: oklch(1 0 0);
+  --background: oklch(0.963 0.002 286);
   --foreground: oklch(0.16 0.004 285);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.16 0.004 285);
@@ -96,27 +105,29 @@
   --popover-foreground: oklch(0.16 0.004 285);
   --primary: oklch(0.21 0.006 285);
   --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.967 0.001 286);
+  /* Chips, hovers and skeletons sit ON white, so they have to be darker than
+     the page rather than equal to it. */
+  --secondary: oklch(0.935 0.003 286);
   --secondary-foreground: oklch(0.21 0.006 285);
-  --muted: oklch(0.967 0.001 286);
-  --muted-foreground: oklch(0.552 0.014 285);
-  --accent: oklch(0.967 0.001 286);
+  --muted: oklch(0.935 0.003 286);
+  --muted-foreground: oklch(0.505 0.014 285);
+  --accent: oklch(0.918 0.004 286);
   --accent-foreground: oklch(0.21 0.006 285);
   --destructive: oklch(0.577 0.245 27.3);
   --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.92 0.004 286);
-  --input: oklch(0.92 0.004 286);
+  --border: oklch(0.885 0.005 286);
+  --input: oklch(0.865 0.006 286);
   --ring: oklch(0.52 0.16 258);
 
   --brand: oklch(0.52 0.16 258);
   --brand-foreground: oklch(0.985 0 0);
-  --brand-muted: oklch(0.95 0.03 258);
+  --brand-muted: oklch(0.945 0.032 258);
 
-  --sidebar: oklch(0.985 0 0);
+  --sidebar: oklch(1 0 0);
   --sidebar-foreground: oklch(0.16 0.004 285);
-  --sidebar-accent: oklch(0.955 0.002 286);
+  --sidebar-accent: oklch(0.925 0.004 286);
   --sidebar-accent-foreground: oklch(0.21 0.006 285);
-  --sidebar-border: oklch(0.92 0.004 286);
+  --sidebar-border: oklch(0.885 0.005 286);
 
   --status-active: oklch(0.93 0.05 150);
   --status-active-foreground: oklch(0.44 0.11 150);
@@ -130,20 +141,22 @@
   --status-debt: oklch(0.94 0.05 55);
   --status-debt-foreground: oklch(0.52 0.15 48);
   --status-debt-edge: oklch(0.68 0.16 52);
-  --status-neutral: oklch(0.95 0 0);
-  --status-neutral-foreground: oklch(0.44 0 0);
-  --status-neutral-edge: oklch(0.75 0 0);
+  --status-neutral: oklch(0.925 0 0);
+  --status-neutral-foreground: oklch(0.42 0 0);
+  --status-neutral-edge: oklch(0.72 0 0);
 
   --paid: oklch(0.93 0.15 102);
   --paid-foreground: oklch(0.38 0.09 85);
 
-  --grid-line: oklch(0.9 0.004 286);
-  --grid-header: oklch(0.975 0.001 286);
-  --grid-row-hover: oklch(0.978 0.002 258);
+  /* The grid now sits on a white surface, so every one of these has to be
+     darker than white to register at all. */
+  --grid-line: oklch(0.9 0.005 286);
+  --grid-header: oklch(0.955 0.003 286);
+  --grid-row-hover: oklch(0.938 0.008 258);
   /* Zebra banding. Deliberately fainter than the hover tint: the stripe is a
      reading aid, and hovering a striped row must still be visible as a change. */
-  --grid-row-alt: oklch(0.985 0.001 286);
-  --grid-cell-focus: oklch(0.96 0.03 258);
+  --grid-row-alt: oklch(0.976 0.002 286);
+  --grid-cell-focus: oklch(0.915 0.045 258);
 
   --radius: 0.5rem;
 }
@@ -282,8 +295,28 @@
    printing has to produce the table and nothing else: no chrome, no tints that
    turn into grey mud, and hairlines that actually survive a mono printer. */
 @media print {
-  :root {
+  /* Paper has one theme. Now that dark is a choice rather than the only
+     option, the surface tokens have to be flattened for print or a receipt
+     run off a dark screen comes out as black boxes on the roll. */
+  :root,
+  .dark {
     color-scheme: light;
+
+    --background: #fff;
+    --foreground: #000;
+    --card: #fff;
+    --card-foreground: #000;
+    --popover: #fff;
+    --popover-foreground: #000;
+    --muted: #fff;
+    --muted-foreground: #333;
+    --sidebar: #fff;
+    --border: #999;
+    --grid-line: #999;
+    --grid-header: #fff;
+    --grid-row-hover: #fff;
+    --grid-row-alt: #fff;
+    --grid-cell-focus: #fff;
   }
 
   body {

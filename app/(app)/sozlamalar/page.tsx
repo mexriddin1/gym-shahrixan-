@@ -11,6 +11,7 @@ import { TariffSection } from "@/components/app/tariff-section";
 import { ProductSection } from "@/components/app/product-section";
 import { ReceiptSettingsSection } from "@/components/app/receipt-settings-section";
 import { SheetColumnSection } from "@/components/app/sheet-column-section";
+import { ThemeSection } from "@/components/app/theme-section";
 import { getSettings } from "@/lib/db/queries";
 import { useResource } from "@/lib/db/use-resource";
 import { Button } from "@/components/ui/button";
@@ -26,7 +27,7 @@ export default function SettingsPage() {
     <div className="max-w-3xl space-y-6">
       <PageHeader
         title="Sozlamalar"
-        subtitle="Tariflar, mahsulotlar, jadval ustunlari, chek va PIN kod"
+        subtitle="Tariflar, mahsulotlar, jadval ustunlari, chek, ko'rinish va PIN kod"
       />
 
       <TariffSection />
@@ -40,6 +41,8 @@ export default function SettingsPage() {
       />
 
       <ReceiptSettingsSection />
+
+      <ThemeSection />
 
       <PinSection usingDefaultPin={usingDefaultPin} />
     </div>

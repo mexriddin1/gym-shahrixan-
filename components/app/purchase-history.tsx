@@ -107,7 +107,7 @@ export function VisitList({
         </p>
       </div>
 
-      <div className="overflow-hidden border border-border">
+      <div className="overflow-hidden border border-border bg-card">
         {error ? (
           <ErrorState message={error} onRetry={onRetry} />
         ) : loading ? (
