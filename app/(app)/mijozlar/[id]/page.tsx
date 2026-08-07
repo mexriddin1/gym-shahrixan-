@@ -323,7 +323,12 @@ function SubscriptionHistory({
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    {/* Wraps, and the row it sits in clips what overflows. A
+                        run of icons plus a price is already wider than a phone
+                        once every action is present, and the thing pushed off
+                        the right edge is always the last one - which is the
+                        button that actually takes money. */}
+                    <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
                       <div className="text-right">
                         <p className="nums text-sm font-medium">
                           {formatSom(sub.finalPrice)}
