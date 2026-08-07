@@ -193,6 +193,12 @@ export default function MonthlyPage() {
                   clientName: row.original.clientName,
                   label: row.original.label,
                   debt: row.original.debt,
+                  // Carries the sale itself so the debt can be discounted here
+                  // rather than only on the member's page.
+                  subscription: data?.subs.find(
+                    (s: Subscription) => s.id === row.original.id,
+                  ),
+                  paid: row.original.paid,
                 });
                 setPayOpen(true);
               }}

@@ -124,6 +124,81 @@ export async function sellTariff(
   return subRef.id;
 }
 
+/* ---------------------------- edit a sale ---------------------------- */
+
+export type EditSubscriptionInput = {
+  startDate: DateKey;
+  /** Null falls back to the duration snapshotted on the sale. */
+  endDate: DateKey | null;
+  /** Absolute so'm off the original price. 0 means no discount. */
+  discountValue: number;
+  discountReason: string | null;
+  note: string | null;
+};
+
+/**
+ * Re-prices or re-dates a sale that has already been made.
+ *
+ * The member is standing at the desk when the discount gets agreed, which is
+ * often after the tariff has already been rung up. Rather than delete the sale
+ * and enter it again - losing its code, its date and its payments - the terms
+ * are edited in place and the audit trail carries the before and after.
+ *
+ * `originalPrice` is deliberately not editable: it is the snapshot of what the
+ * tariff cost on the day, and the whole point of a discount is that it is
+ * visible as a reduction from that. Everything owed is derived from
+ * `finalPrice`, so cutting it here is what actually moves the debt.
+ */
+export async function updateSubscription(
+  id: string,
+  before: Subscription,
+  input: EditSubscriptionInput,
+  actor: Actor,
+): Promise<void> {
+  const { updateDoc } = await import("firebase/firestore");
+
+  const discountValue = Math.max(0, Math.round(input.discountValue));
+  const discountType: DiscountType = discountValue > 0 ? "amount" : "none";
+  const finalPrice = computeFinalPrice(
+    before.originalPrice,
+    discountType,
+    discountValue,
+  );
+
+  // A date the staff typed only counts as manual if it differs from what the
+  // duration would have produced anyway.
+  const computed = computeEndDate(input.startDate, before.durationDays);
+  const endDate = input.endDate ?? computed;
+
+  await updateDoc(doc(subscriptionsRef(), id), {
+    startDate: input.startDate,
+    endDate,
+    endDateManual: endDate !== computed,
+    discountType,
+    discountValue,
+    discountReason: input.discountReason,
+    finalPrice,
+    note: input.note,
+    updatedAt: now(),
+  });
+
+  writeAudit({
+    actor,
+    action: "update",
+    entity: "subscription",
+    entityId: id,
+    before: {
+      client: before.clientName,
+      finalPrice: before.finalPrice,
+      discountValue: before.discountValue,
+      startDate: before.startDate,
+      endDate: before.endDate,
+    },
+    after: { finalPrice, discountValue, startDate: input.startDate, endDate },
+    reason: input.discountReason,
+  });
+}
+
 /* ------------------------------- payments ------------------------------- */
 
 export type PaymentInput = {

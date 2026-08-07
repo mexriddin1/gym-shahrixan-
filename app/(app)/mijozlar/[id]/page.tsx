@@ -34,6 +34,7 @@ import { derivedStatus } from "@/lib/domain/subscription";
 import { cn, dateKey, formatDateKey, formatPhone, formatSom } from "@/lib/utils";
 import { ClientFormDialog } from "@/components/app/client-form-dialog";
 import { SellTariffDialog } from "@/components/app/sell-tariff-dialog";
+import { EditSubscriptionDialog } from "@/components/app/edit-subscription-dialog";
 import { PaymentDialog, type PaymentTarget } from "@/components/app/payment-dialog";
 import { ReceiptDialog } from "@/components/app/receipt-dialog";
 import { PurchaseHistory } from "@/components/app/purchase-history";
@@ -54,6 +55,7 @@ export default function ClientDetailPage() {
   const [sellOpen, setSellOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const [payTarget, setPayTarget] = useState<PaymentTarget | null>(null);
+  const [editSub, setEditSub] = useState<Subscription | null>(null);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
 
   const { data, loading, error, reload } = useResource(async () => {
@@ -163,6 +165,7 @@ export default function ClientDetailPage() {
         warningDays={settings.expiryWarningDays}
         paidMap={paidMap}
         onReceipt={setReceipt}
+        onEdit={setEditSub}
         onPay={(target) => {
           setPayTarget(target);
           setPayOpen(true);
@@ -209,6 +212,14 @@ export default function ClientDetailPage() {
         onSaved={reload}
       />
 
+      <EditSubscriptionDialog
+        open={editSub !== null}
+        onOpenChange={(open) => !open && setEditSub(null)}
+        subscription={editSub}
+        paid={editSub ? (paidMap.get(editSub.id) ?? 0) : 0}
+        onSaved={reload}
+      />
+
       <PaymentDialog
         open={payOpen}
         onOpenChange={setPayOpen}
@@ -233,6 +244,7 @@ function SubscriptionHistory({
   warningDays,
   paidMap,
   onReceipt,
+  onEdit,
   onPay,
   onCancel,
   onDelete,
@@ -242,6 +254,7 @@ function SubscriptionHistory({
   warningDays: number;
   paidMap: Map<string, number>;
   onReceipt: (receipt: Receipt) => void;
+  onEdit: (sub: Subscription) => void;
   onPay: (target: PaymentTarget) => void;
   onCancel: (sub: Subscription) => void;
   onDelete: (sub: Subscription) => void;
@@ -257,7 +270,7 @@ function SubscriptionHistory({
           <p className="nums text-xs text-muted-foreground">{subs.length} ta</p>
         </div>
 
-        <div className="overflow-hidden border border-border">
+        <div className="overflow-hidden border border-border bg-card">
           {subs.length === 0 ? (
             <EmptyState
               icon={TagIcon}
@@ -335,6 +348,22 @@ function SubscriptionHistory({
                         <ReceiptIcon />
                       </Button>
 
+                      {/* Sits next to the chek because that is where the
+                          question comes from: the member reads the receipt,
+                          then asks about the discount. A called-off sale has
+                          no terms left worth editing. */}
+                      {!cancelled ? (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`${sub.tariffName} ni tahrirlash`}
+                          title="Tahrirlash"
+                          onClick={() => onEdit(sub)}
+                        >
+                          <PencilSimpleIcon />
+                        </Button>
+                      ) : null}
+
                       {/* Cancelling is the reversible half - the record stays
                           and stops being chased. Deleting is not, so it sits
                           last and reads destructive. */}
@@ -373,6 +402,10 @@ function SubscriptionHistory({
                               clientName: sub.clientName,
                               label: sub.tariffName,
                               debt,
+                              // Lets the desk discount while taking the money,
+                              // which is when it usually gets agreed.
+                              subscription: sub,
+                              paid,
                             })
                           }
                         >
@@ -425,7 +458,7 @@ function DetailSkeleton() {
           </div>
         ))}
       </div>
-      <div className="overflow-hidden border border-border">
+      <div className="overflow-hidden border border-border bg-card">
         <div className="divide-y divide-grid-line">
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="flex items-center justify-between px-3 py-3">
