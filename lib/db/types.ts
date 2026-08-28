@@ -149,15 +149,36 @@ export type Subscription = {
   updatedAt: Timestamp;
 };
 
-export type PaymentMethod =
-  | "cash"
-  | "card"
-  | "transfer"
-  | "click"
-  | "payme"
-  | "other";
+/**
+ * How money came in, referenced by id.
+ *
+ * A stored id rather than a union, because which methods a gym takes is a
+ * business fact that moves without a deploy: one desk sees nothing but cash,
+ * the next adds Payme the week the terminal arrives. The list lives in
+ * settings, and a payment keeps the id it was recorded under even if that
+ * method is later renamed or removed - see `paymentMethodLabel`.
+ */
+export type PaymentMethodId = string;
 
-export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+export type PaymentMethod = {
+  id: PaymentMethodId;
+  name: string;
+  /** Order in the picker, 1-based. */
+  position: number;
+};
+
+export const DEFAULT_PAYMENT_METHODS: PaymentMethod[] = [
+  { id: "cash", name: "Naqd", position: 1 },
+  { id: "click", name: "Click", position: 2 },
+];
+
+/**
+ * Names for the ids the app used to hand out from a fixed list.
+ *
+ * Payments recorded before the list became editable carry these ids and must
+ * keep reading as what they were, whether or not the gym still offers them.
+ */
+const LEGACY_PAYMENT_METHOD_NAMES: Record<string, string> = {
   cash: "Naqd",
   card: "Karta",
   transfer: "O'tkazma",
@@ -165,6 +186,42 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   payme: "Payme",
   other: "Boshqa",
 };
+
+/** What to print for a recorded method id. Never blank, never the raw id. */
+export function paymentMethodLabel(
+  id: PaymentMethodId | null | undefined,
+  methods: readonly PaymentMethod[],
+): string {
+  if (!id) return "Belgilanmagan";
+  return (
+    methods.find((m) => m.id === id)?.name ??
+    LEGACY_PAYMENT_METHOD_NAMES[id] ??
+    id
+  );
+}
+
+/**
+ * A stable id for a newly added method, slugged from its name.
+ *
+ * Slugged rather than random so the value sitting on a payment is readable in
+ * the console, and so a gym that adds "Payme" lands on the same id the old
+ * fixed list used - which is what lets older payments keep their name.
+ */
+export function paymentMethodId(
+  name: string,
+  taken: readonly string[],
+): PaymentMethodId {
+  const base =
+    name
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "usul";
+  if (!taken.includes(base)) return base;
+  let n = 2;
+  while (taken.includes(`${base}-${n}`)) n += 1;
+  return `${base}-${n}`;
+}
 
 export type Payment = {
   id: string;
@@ -174,7 +231,7 @@ export type Payment = {
   subscriptionId: string | null;
   orderId: string | null;
   amount: number;
-  method: PaymentMethod;
+  method: PaymentMethodId;
   note: string | null;
   paidAt: Timestamp;
   createdBy: string | null;
@@ -316,6 +373,13 @@ export type Settings = {
    * in the schema.
    */
   sheetColumns: SheetColumn[];
+  /**
+   * How this gym takes money, in picker order.
+   *
+   * Ships with cash and Click because that is what a desk starts with; a
+   * terminal, a bank transfer or a staff tab is the gym's own to add.
+   */
+  paymentMethods: PaymentMethod[];
   updatedAt: Timestamp;
 };
 
@@ -337,6 +401,7 @@ export const DEFAULT_SETTINGS: Omit<Settings, "updatedAt"> = {
   expiryWarningDays: 3,
   receiptFooter: "Xaridingiz uchun rahmat!",
   sheetColumns: [],
+  paymentMethods: DEFAULT_PAYMENT_METHODS,
 };
 
 export type AuditAction = "create" | "update" | "delete" | "cancel" | "restore";
@@ -386,6 +451,14 @@ export type SheetItem = {
   lineTotal: number;
   /** True once the money is actually in hand. See `gymFeePaid`. */
   paid?: boolean;
+  /**
+   * How that money came in, set at the moment it was marked collected.
+   *
+   * Absent on a line settled before the sheet asked, and on one that is not
+   * settled at all. Never guessed: attributing cash to Click is worse than
+   * admitting the sheet does not say.
+   */
+  method?: PaymentMethodId;
 };
 
 /** Fresh id for a sheet line. */
@@ -394,6 +467,8 @@ export type SheetExtra = {
   amount: number;
   /** Yellow on the sheet, same convention as the floor fee and products. */
   paid?: boolean;
+  /** How it was settled. See `SheetItem.method`. */
+  method?: PaymentMethodId;
 };
 
 export function newLineId(): string {
@@ -423,6 +498,18 @@ export type DailySheetRow = {
    * is what the highlighter yellow meant in the workbook.
    */
   gymFeePaid?: boolean;
+  /** How the floor fee was settled. See `SheetItem.method`. */
+  gymFeeMethod?: PaymentMethodId;
+  /**
+   * The method the desk currently has selected for this row.
+   *
+   * Not a record of anything on its own - it is what the next charge marked
+   * collected will be stamped with. Kept on the row rather than in component
+   * state so a member who pays by Click still reads as Click after a refresh,
+   * and so switching it partway through leaves the charges already settled
+   * exactly as they were recorded.
+   */
+  paymentMethod?: PaymentMethodId | null;
   /**
    * Amounts recorded against the gym's own columns, keyed by column id.
    *
@@ -493,4 +580,63 @@ export function rowCollected(
     (sum, i) => sum + (i.paid ? i.lineTotal : 0),
     fee + extras,
   );
+}
+
+/** One settled charge and the method it came in under. */
+export type CollectedByMethod = {
+  method: PaymentMethodId | null;
+  amount: number;
+};
+
+/**
+ * What this row has collected, split by how the money came in.
+ *
+ * A charge settled before the sheet recorded a method has none, and comes back
+ * under `null` rather than folded into cash. The desk reconciling a till needs
+ * to see that a number is unattributed, not be told a plausible answer.
+ *
+ * Sums to `rowCollected` for any row, which is what makes the split safe to
+ * print next to the day's takings.
+ */
+export function rowCollectedByMethod(
+  row: Pick<
+    DailySheetRow,
+    | "gymFeeMode"
+    | "gymFee"
+    | "gymFeePaid"
+    | "gymFeeMethod"
+    | "items"
+    | "extras"
+  >,
+): CollectedByMethod[] {
+  const out: CollectedByMethod[] = [];
+
+  if (row.gymFeeMode === "cash" && row.gymFeePaid && row.gymFee > 0) {
+    out.push({ method: row.gymFeeMethod ?? null, amount: row.gymFee });
+  }
+  for (const extra of Object.values(row.extras ?? {})) {
+    if (extra.paid && extra.amount > 0) {
+      out.push({ method: extra.method ?? null, amount: extra.amount });
+    }
+  }
+  for (const item of row.items) {
+    if (item.paid && item.lineTotal > 0) {
+      out.push({ method: item.method ?? null, amount: item.lineTotal });
+    }
+  }
+
+  return out;
+}
+
+/** Rolls several rows' settled charges into one total per method. */
+export function totalsByMethod(
+  rows: readonly Parameters<typeof rowCollectedByMethod>[0][],
+): Map<PaymentMethodId | null, number> {
+  const totals = new Map<PaymentMethodId | null, number>();
+  for (const row of rows) {
+    for (const { method, amount } of rowCollectedByMethod(row)) {
+      totals.set(method, (totals.get(method) ?? 0) + amount);
+    }
+  }
+  return totals;
 }

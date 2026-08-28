@@ -209,6 +209,7 @@ export default function ClientDetailPage() {
         onOpenChange={setSellOpen}
         client={client}
         tariffs={tariffs}
+        methods={settings.paymentMethods}
         onSaved={reload}
       />
 
@@ -224,6 +225,7 @@ export default function ClientDetailPage() {
         open={payOpen}
         onOpenChange={setPayOpen}
         target={payTarget}
+        methods={settings.paymentMethods}
         onSaved={reload}
       />
 

@@ -11,6 +11,7 @@ import { TariffSection } from "@/components/app/tariff-section";
 import { ProductSection } from "@/components/app/product-section";
 import { ReceiptSettingsSection } from "@/components/app/receipt-settings-section";
 import { SheetColumnSection } from "@/components/app/sheet-column-section";
+import { PaymentMethodSection } from "@/components/app/payment-method-section";
 import { ThemeSection } from "@/components/app/theme-section";
 import { getSettings } from "@/lib/db/queries";
 import { useResource } from "@/lib/db/use-resource";
@@ -27,7 +28,7 @@ export default function SettingsPage() {
     <div className="max-w-3xl space-y-6">
       <PageHeader
         title="Sozlamalar"
-        subtitle="Tariflar, mahsulotlar, jadval ustunlari, chek, ko'rinish va PIN kod"
+        subtitle="Tariflar, mahsulotlar, jadval ustunlari, to'lov turlari, chek, ko'rinish va PIN kod"
       />
 
       <TariffSection />
@@ -36,6 +37,12 @@ export default function SettingsPage() {
 
       <SheetColumnSection
         columns={settings.data?.sheetColumns ?? []}
+        actor={actor}
+        onSaved={settings.reload}
+      />
+
+      <PaymentMethodSection
+        methods={settings.data?.paymentMethods ?? []}
         actor={actor}
         onSaved={settings.reload}
       />

@@ -6,10 +6,10 @@ import { SpinnerIcon } from "@phosphor-icons/react";
 
 import { useAuth } from "@/lib/auth/auth-context";
 import { recordPayment, updateSubscription } from "@/lib/db/money-mutations";
-import {
-  PAYMENT_METHOD_LABELS,
-  type PaymentMethod,
-  type Subscription,
+import type {
+  PaymentMethod,
+  PaymentMethodId,
+  Subscription,
 } from "@/lib/db/types";
 import { computeDebt, computeFinalPrice } from "@/lib/domain/pricing";
 import { formatSom } from "@/lib/utils";
@@ -50,11 +50,14 @@ export function PaymentDialog({
   open,
   onOpenChange,
   target,
+  methods,
   onSaved,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   target: PaymentTarget | null;
+  /** What this gym takes, from Sozlamalar. */
+  methods: PaymentMethod[];
   onSaved: () => void;
 }) {
   const { staff } = useAuth();
@@ -62,10 +65,13 @@ export function PaymentDialog({
 
   const [amount, setAmount] = useState(0);
   const [discount, setDiscount] = useState(0);
-  const [method, setMethod] = useState<PaymentMethod>("cash");
+  const [method, setMethod] = useState<PaymentMethodId>("");
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const ordered = [...methods].sort((a, b) => a.position - b.position);
+  const defaultMethod = ordered[0]?.id ?? "";
 
   const sub = target?.subscription ?? null;
   const paid = target?.paid ?? 0;
@@ -80,7 +86,7 @@ export function PaymentDialog({
     if (open && target) {
       setAmount(target.debt);
       setDiscount(startingDiscount);
-      setMethod("cash");
+      setMethod(defaultMethod);
       setNote("");
       setError(null);
     }
@@ -163,7 +169,9 @@ export function PaymentDialog({
             subscriptionId: target.kind === "subscription" ? target.id : null,
             orderId: target.kind === "order" ? target.id : null,
             amount,
-            method,
+            // Falls back to the gym's first method if the list arrived after
+            // the dialog did, so a payment is never filed under nothing.
+            method: method || defaultMethod,
             note: note.trim() || null,
           },
           actor,
@@ -281,11 +289,11 @@ export function PaymentDialog({
               <Select
                 id="method"
                 value={method}
-                onChange={(e) => setMethod(e.target.value as PaymentMethod)}
+                onChange={(e) => setMethod(e.target.value)}
               >
-                {Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
+                {ordered.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
                   </option>
                 ))}
               </Select>

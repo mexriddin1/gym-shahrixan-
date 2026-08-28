@@ -7,7 +7,7 @@ import type {
   DateKey,
   DiscountType,
   Payment,
-  PaymentMethod,
+  PaymentMethodId,
   Subscription,
   Tariff,
 } from "./types";
@@ -27,7 +27,7 @@ export type SellTariffInput = {
   endDate: DateKey | null;
   endDateReason: string | null;
   paidAmount: number;
-  method: PaymentMethod;
+  method: PaymentMethodId;
   note: string | null;
 };
 
@@ -207,7 +207,7 @@ export type PaymentInput = {
   subscriptionId: string | null;
   orderId: string | null;
   amount: number;
-  method: PaymentMethod;
+  method: PaymentMethodId;
   note: string | null;
 };
 

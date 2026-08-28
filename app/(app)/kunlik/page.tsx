@@ -32,12 +32,18 @@ import {
   setRowExtraPaid,
   setRowGymFee,
   setRowKeyNumber,
+  setRowPaymentMethod,
 } from "@/lib/db/sheet-mutations";
 import {
+  paymentMethodLabel,
   rowCollected,
+  rowCollectedByMethod,
   rowTotal,
+  totalsByMethod,
   type Client,
   type DailySheetRow,
+  type PaymentMethod,
+  type PaymentMethodId,
   type Product,
   type SheetColumn,
 } from "@/lib/db/types";
@@ -113,6 +119,29 @@ export default function DailySheetPage() {
   );
   const colDiscount = COL_EXTRA + extraColumns.length;
   const colCount = colDiscount + 1;
+
+  /** How this gym takes money, in the order set in Sozlamalar. */
+  const methods = useMemo(
+    () =>
+      [...(data?.settings.paymentMethods ?? [])].sort(
+        (a, b) => a.position - b.position,
+      ),
+    [data],
+  );
+  /** What a row is on until someone changes it: the first configured method. */
+  const defaultMethod = methods[0]?.id ?? null;
+  /**
+   * The method the next charge marked collected on this row gets stamped with.
+   *
+   * Rows written before the sheet asked carry none, and fall back to the
+   * default rather than staying blank - the desk picking a method is the
+   * exception, not the thing it has to do before every click.
+   */
+  const methodFor = useCallback(
+    (row: DailySheetRow): PaymentMethodId | null =>
+      row.paymentMethod ?? defaultMethod,
+    [defaultMethod],
+  );
 
   /** Members whose subscription covers today, so the floor fee reads "oylik". */
   const covered = useMemo(() => {
@@ -218,6 +247,7 @@ export default function DailySheetPage() {
             clientName: `${client.firstName} ${client.lastName ?? ""}`.trim(),
             existing: rows,
             gymFeeMode: covered.has(client.id) ? "subscription" : "none",
+            paymentMethod: defaultMethod,
           },
           actor,
         );
@@ -226,7 +256,7 @@ export default function DailySheetPage() {
         toast.error("Satr qo'shilmadi");
       }
     },
-    [date, rows, covered, actor, reload],
+    [date, rows, covered, actor, reload, defaultMethod],
   );
 
   /**
@@ -249,6 +279,7 @@ export default function DailySheetPage() {
             existing: rows,
             // Never been here before, so there is nothing to cover the floor.
             gymFeeMode: "none",
+            paymentMethod: defaultMethod,
           },
           actor,
         );
@@ -257,7 +288,7 @@ export default function DailySheetPage() {
         toast.error("Satr qo'shilmadi");
       }
     },
-    [date, rows, actor, reload],
+    [date, rows, actor, reload, defaultMethod],
   );
 
   async function handleAddItem(product: Product, qty: number) {
@@ -320,23 +351,58 @@ export default function DailySheetPage() {
     }
   }
 
-  /** Flips whether the floor fee has been collected. */
+  /** Flips whether the floor fee has been collected, recording how. */
   async function handleToggleGymFeePaid(row: DailySheetRow) {
     const next = !row.gymFeePaid;
+    const method = next ? methodFor(row) : null;
     mutate((current) => ({
       ...current,
       rows: current.rows.map((r) =>
-        r.id === row.id ? { ...r, gymFeePaid: next } : r,
+        r.id === row.id
+          ? { ...r, gymFeePaid: next, gymFeeMethod: method ?? undefined }
+          : r,
       ),
     }));
     try {
-      await setGymFeePaid(date, row.id, next);
+      await setGymFeePaid(date, row.id, next, method);
     } catch {
       mutate((current) => ({
         ...current,
         rows: current.rows.map((r) =>
-          r.id === row.id ? { ...r, gymFeePaid: !next } : r,
+          r.id === row.id
+            ? { ...r, gymFeePaid: !next, gymFeeMethod: row.gymFeeMethod }
+            : r,
         ),
+      }));
+      toast.error("Saqlab bo'lmadi");
+    }
+  }
+
+  /**
+   * Switches the method the next charge on this row will be recorded under.
+   *
+   * What has already been marked collected keeps the method it was collected
+   * with, which is how a member who paid the floor fee in cash and their drink
+   * by Click ends up correct on the sheet rather than rewritten.
+   */
+  async function handleChangeMethod(
+    row: DailySheetRow,
+    method: PaymentMethodId,
+  ) {
+    const previous = row.paymentMethod ?? null;
+    if (previous === method) return;
+
+    const swap = (value: PaymentMethodId | null) => (r: DailySheetRow) =>
+      r.id === row.id ? { ...r, paymentMethod: value } : r;
+
+    mutate((current) => ({ ...current, rows: current.rows.map(swap(method)) }));
+
+    try {
+      await setRowPaymentMethod(date, row.id, method);
+    } catch {
+      mutate((current) => ({
+        ...current,
+        rows: current.rows.map(swap(previous)),
       }));
       toast.error("Saqlab bo'lmadi");
     }
@@ -347,20 +413,32 @@ export default function DailySheetPage() {
     const extra = row.extras?.[columnId];
     if (!extra || extra.amount <= 0) return;
     const next = !extra.paid;
+    const method = next ? methodFor(row) : null;
 
-    const swap = (paid: boolean) => (r: DailySheetRow) =>
-      r.id === row.id
-        ? { ...r, extras: { ...r.extras, [columnId]: { ...extra, paid } } }
-        : r;
+    const swap =
+      (paid: boolean, withMethod: PaymentMethodId | undefined) =>
+      (r: DailySheetRow) =>
+        r.id === row.id
+          ? {
+              ...r,
+              extras: {
+                ...r.extras,
+                [columnId]: { ...extra, paid, method: withMethod },
+              },
+            }
+          : r;
 
-    mutate((current) => ({ ...current, rows: current.rows.map(swap(next)) }));
+    mutate((current) => ({
+      ...current,
+      rows: current.rows.map(swap(next, method ?? undefined)),
+    }));
 
     try {
-      await setRowExtraPaid(date, row.id, columnId, next);
+      await setRowExtraPaid(date, row.id, columnId, next, method);
     } catch {
       mutate((current) => ({
         ...current,
-        rows: current.rows.map(swap(!!extra.paid)),
+        rows: current.rows.map(swap(!!extra.paid, extra.method)),
       }));
       toast.error("Saqlab bo'lmadi");
     }
@@ -371,9 +449,12 @@ export default function DailySheetPage() {
     const item = row.items.find((i) => i.lineId === lineId);
     if (!item) return;
     const next = !item.paid;
+    const method = next ? methodFor(row) : null;
 
     const applied = row.items.map((i) =>
-      i.lineId === lineId ? { ...i, paid: next } : i,
+      i.lineId === lineId
+        ? { ...i, paid: next, method: method ?? undefined }
+        : i,
     );
     mutate((current) => ({
       ...current,
@@ -383,7 +464,7 @@ export default function DailySheetPage() {
     }));
 
     try {
-      await setItemPaid(date, row.id, row.items, lineId, next);
+      await setItemPaid(date, row.id, row.items, lineId, next, method);
     } catch {
       mutate((current) => ({
         ...current,
@@ -419,6 +500,27 @@ export default function DailySheetPage() {
     0,
   );
   const discountTotal = rows.reduce((sum, r) => sum + r.discount, 0);
+  /**
+   * What was taken, split by how it came in.
+   *
+   * Only worth showing once there is more than one answer: a gym that takes
+   * nothing but cash would just be reading "To'langan" twice.
+   */
+  const collectedSplit = (() => {
+    const order = new Map(methods.map((m, i) => [m.id, i]));
+    return [...totalsByMethod(rows)]
+      .filter(([, amount]) => amount > 0)
+      .sort(
+        ([a], [b]) =>
+          (order.get(a ?? "") ?? methods.length) -
+          (order.get(b ?? "") ?? methods.length),
+      )
+      .map(([id, amount]) => ({
+        id: id ?? "",
+        amount,
+        label: paymentMethodLabel(id, methods),
+      }));
+  })();
   const extraTotals = new Map(
     extraColumns.map((c) => [
       c.id,
@@ -474,6 +576,7 @@ export default function DailySheetPage() {
                 <col key={c.id} className="w-28" />
               ))}
               <col className="w-28" />
+              <col className="w-28" />
               <col className="w-32" />
               <col className="w-32" />
               <col className="w-10" />
@@ -491,6 +594,7 @@ export default function DailySheetPage() {
                     {c.name}
                   </Th>
                 ))}
+                <Th className="text-left">To&apos;lov turi</Th>
                 <Th className="text-right">Chegirma</Th>
                 <Th className="text-right">Jami</Th>
                 <Th className="text-right">Berilishi kerak</Th>
@@ -506,6 +610,8 @@ export default function DailySheetPage() {
                   rowIndex={rowIndex}
                   extraColumns={extraColumns}
                   colDiscount={colDiscount}
+                  methods={methods}
+                  method={methodFor(row)}
                   nav={nav}
                   editing={editing}
                   setEditing={setEditing}
@@ -527,6 +633,7 @@ export default function DailySheetPage() {
                   onToggleExtraPaid={(columnId) =>
                     handleToggleExtraPaid(row, columnId)
                   }
+                  onChangeMethod={(method) => handleChangeMethod(row, method)}
                 />
               ))}
 
@@ -559,6 +666,7 @@ export default function DailySheetPage() {
                 <Td />
                 <Td />
                 <Td />
+                <Td />
               </tr>
             </tbody>
 
@@ -575,6 +683,7 @@ export default function DailySheetPage() {
                       {formatCell(extraTotals.get(c.id) ?? 0)}
                     </Td>
                   ))}
+                  <Td />
                   <Td className="nums text-right">{formatCell(discountTotal)}</Td>
                   <Td className="nums text-right font-semibold">
                     {formatSom(dayTotal)}
@@ -599,10 +708,25 @@ export default function DailySheetPage() {
           till are different numbers. Both belong on screen, and they read as a
           summary of the sheet above rather than a header over it. */}
       {rows.length > 0 ? (
-        <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 text-sm">
-          <Total label="Kun bo'yicha" value={dayTotal} />
-          <Total label="To'langan" value={collected} tone="paid" />
-          <Total label="Qolgan" value={uncollected} tone="debt" />
+        <div className="space-y-1">
+          <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 text-sm">
+            <Total label="Kun bo'yicha" value={dayTotal} />
+            <Total label="To'langan" value={collected} tone="paid" />
+            <Total label="Qolgan" value={uncollected} tone="debt" />
+          </div>
+
+          {collectedSplit.length > 1 ? (
+            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              {collectedSplit.map((m) => (
+                <span key={m.id} className="flex items-baseline gap-1.5">
+                  {m.label}
+                  <span className="nums font-medium text-foreground">
+                    {formatSom(m.amount)}
+                  </span>
+                </span>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -629,7 +753,9 @@ export default function DailySheetPage() {
           open={receiptRow !== null}
           onOpenChange={(open) => !open && setReceiptRow(null)}
           receipt={
-            receiptRow ? dailyReceipt(receiptRow, date, extraColumns) : null
+            receiptRow
+              ? dailyReceipt(receiptRow, date, extraColumns, methods)
+              : null
           }
           settings={data.settings}
         />
@@ -643,6 +769,8 @@ function SheetRow({
   rowIndex,
   extraColumns,
   colDiscount,
+  methods,
+  method,
   nav,
   editing,
   setEditing,
@@ -655,11 +783,15 @@ function SheetRow({
   onToggleGymFeePaid,
   onToggleItemPaid,
   onToggleExtraPaid,
+  onChangeMethod,
 }: {
   row: DailySheetRow;
   rowIndex: number;
   extraColumns: SheetColumn[];
   colDiscount: number;
+  methods: PaymentMethod[];
+  /** What the next charge marked collected here will be recorded under. */
+  method: PaymentMethodId | null;
   nav: ReturnType<typeof useCellNavigation>;
   editing: { row: number; col: number; char?: string } | null;
   setEditing: (v: { row: number; col: number; char?: string } | null) => void;
@@ -672,10 +804,14 @@ function SheetRow({
   onToggleGymFeePaid: () => void;
   onToggleItemPaid: (lineId: string) => void;
   onToggleExtraPaid: (columnId: string) => void;
+  onChangeMethod: (method: PaymentMethodId) => void;
 }) {
   const total = rowTotal(row);
   const owed = Math.max(0, total - rowCollected(row));
   const onSubscription = row.gymFeeMode === "subscription";
+  /** Names a method for a cell that has already been settled. */
+  const nameOf = (id: PaymentMethodId | undefined) =>
+    id ? paymentMethodLabel(id, methods) : undefined;
 
   const cell = (col: number) => ({
     editing: editing?.row === rowIndex && editing.col === col,
@@ -739,6 +875,7 @@ function SheetRow({
           value={row.gymFee}
           label={`${row.clientName}, to'lov`}
           paid={row.gymFeePaid}
+          paidMethod={nameOf(row.gymFeeMethod)}
           onTogglePaid={onToggleGymFeePaid}
         />
       )}
@@ -759,7 +896,11 @@ function SheetRow({
               <button
                 type="button"
                 onClick={() => onToggleItemPaid(item.lineId)}
-                title="Bosing: to'landi / to'lanmadi"
+                title={
+                  item.paid && nameOf(item.method)
+                    ? `${nameOf(item.method)} bilan to'langan. Bosing: to'lanmadi`
+                    : "Bosing: to'landi / to'lanmadi"
+                }
                 className="flex items-center gap-1 outline-none"
               >
                 <span className="truncate">{item.productName}</span>
@@ -814,10 +955,18 @@ function SheetRow({
             value={extra?.amount ?? 0}
             label={`${row.clientName}, ${c.name}`}
             paid={extra?.paid}
+            paidMethod={nameOf(extra?.method)}
             onTogglePaid={() => onToggleExtraPaid(c.id)}
           />
         );
       })}
+
+      <MethodCell
+        row={row}
+        methods={methods}
+        method={method}
+        onChange={onChangeMethod}
+      />
 
       <MoneyCell
         {...cell(colDiscount)}
@@ -917,6 +1066,88 @@ function SubscriptionCell({
       )}
     >
       oylik
+    </td>
+  );
+}
+
+/**
+ * Which way the money for this row is coming in.
+ *
+ * A plain select rather than one of the grid's cells, and deliberately outside
+ * the arrow-key path: the sheet's navigation exists for typing numbers fast,
+ * and stepping across a row should not stop to open a dropdown. Changing it
+ * only aims the next click - charges already marked collected keep the method
+ * they were collected under, so a row can honestly read part cash, part Click.
+ */
+function MethodCell({
+  row,
+  methods,
+  method,
+  onChange,
+}: {
+  row: DailySheetRow;
+  methods: PaymentMethod[];
+  method: PaymentMethodId | null;
+  onChange: (method: PaymentMethodId) => void;
+}) {
+  // What this row has actually taken, and under which method. The dropdown can
+  // only show one, so a row that took money more than one way is marked and
+  // spelled out on hover rather than widened to fit the whole split.
+  const split = new Map<PaymentMethodId | null, number>();
+  for (const c of rowCollectedByMethod(row)) {
+    split.set(c.method, (split.get(c.method) ?? 0) + c.amount);
+  }
+  const mixed = split.size > 1;
+  const title = mixed
+    ? [...split]
+        .map(([id, amt]) => `${paymentMethodLabel(id, methods)} ${formatSom(amt)}`)
+        .join(" · ")
+    : undefined;
+
+  // Nothing configured in Sozlamalar, so there is nothing to pick.
+  if (methods.length === 0) {
+    return <Td className="text-left text-muted-foreground/50">{"—"}</Td>;
+  }
+
+  return (
+    <td
+      title={title}
+      className="h-row border-r border-grid-line px-1 align-middle last:border-r-0"
+    >
+      <div className="flex items-center gap-0.5">
+        <select
+          value={method ?? ""}
+          onChange={(e) => onChange(e.target.value)}
+          aria-label={`${row.clientName}, to'lov turi`}
+          className={cn(
+            "h-6 w-full cursor-pointer appearance-none rounded-sm px-1",
+            "bg-transparent text-xs outline-none transition-colors",
+            "hover:bg-muted",
+            "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand",
+            // Prints as the chosen text, without a control's chrome round it.
+            "print:appearance-none print:bg-transparent",
+          )}
+        >
+          {/* A row recorded under a method the gym has since removed still has
+              to show what it says, so its own value is offered alongside. */}
+          {method && !methods.some((m) => m.id === method) ? (
+            <option value={method}>{paymentMethodLabel(method, methods)}</option>
+          ) : null}
+          {methods.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name}
+            </option>
+          ))}
+        </select>
+
+        {mixed ? (
+          <span aria-hidden className="shrink-0 text-brand">
+            {"•"}
+          </span>
+        ) : null}
+      </div>
+
+      {title ? <span className="sr-only">{`Yig'ilgan: ${title}`}</span> : null}
     </td>
   );
 }

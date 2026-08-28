@@ -22,6 +22,7 @@ export function MoneyCell({
   onFocus,
   onTogglePaid,
   paid = false,
+  paidMethod,
   cellRef,
   tabIndex,
   focused,
@@ -40,6 +41,14 @@ export function MoneyCell({
   /** Set when this cell tracks whether its amount has been collected. */
   onTogglePaid?: () => void;
   paid?: boolean;
+  /**
+   * How a collected amount came in, already resolved to a name.
+   *
+   * Carried in the cell's title and label rather than painted into it: the
+   * sheet is read as a column of numbers, and a method on every settled cell
+   * would be six extra words per row saying what the row already says once.
+   */
+  paidMethod?: string;
   cellRef: (el: HTMLElement | null) => void;
   tabIndex: number;
   focused: boolean;
@@ -120,7 +129,11 @@ export function MoneyCell({
       ref={cellRef as (el: HTMLTableCellElement | null) => void}
       role="gridcell"
       tabIndex={tabIndex}
-      aria-label={`${label}: ${value > 0 ? value : "bo'sh"}`}
+      aria-label={
+        paid && value > 0 && paidMethod
+          ? `${label}: ${value}, ${paidMethod} bilan to'langan`
+          : `${label}: ${value > 0 ? value : "bo'sh"}`
+      }
       onKeyDown={onKeyDown}
       onDoubleClick={onStartEdit}
       // Fires however focus arrived: click, Tab, or an arrow key. Without this
@@ -135,7 +148,13 @@ export function MoneyCell({
         // gym charges on the way out, so the sheet has to say who has settled.
         if (onTogglePaid && value > 0) onTogglePaid();
       }}
-      title={onTogglePaid && value > 0 ? "Bosing: to'landi / to'lanmadi" : undefined}
+      title={
+        paid && value > 0 && paidMethod
+          ? `${paidMethod} bilan to'langan. Bosing: to'lanmadi`
+          : onTogglePaid && value > 0
+            ? "Bosing: to'landi / to'lanmadi"
+            : undefined
+      }
       className={cn(
         "nums h-row cursor-cell px-2 text-right text-xs tabular-nums",
         "border-r border-grid-line outline-none",

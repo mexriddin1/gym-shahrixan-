@@ -13,6 +13,7 @@ import {
   newLineId,
   type DateKey,
   type GymFeeMode,
+  type PaymentMethodId,
   type Product,
   type SheetExtra,
   type SheetItem,
@@ -56,6 +57,8 @@ export async function addSheetRow(
     /** Every row already on the sheet, so the new one lands after all of them. */
     existing: readonly { position: number }[];
     gymFeeMode: GymFeeMode;
+    /** What the desk takes by default, so the row opens on a real method. */
+    paymentMethod: PaymentMethodId | null;
   },
   actor: Actor,
 ): Promise<string> {
@@ -68,6 +71,7 @@ export async function addSheetRow(
     keyNumber: null,
     gymFeeMode: row.gymFeeMode,
     gymFee: 0,
+    paymentMethod: row.paymentMethod,
     items: [],
     discount: 0,
     note: null,
@@ -171,21 +175,35 @@ export async function setRowExtra(
   await updateDoc(rowDoc(date, rowId), {
     [`extras.${columnId}`]:
       value > 0
-        ? { amount: value, ...(previous?.paid ? { paid: true } : {}) }
+        ? {
+            amount: value,
+            ...(previous?.paid ? { paid: true } : {}),
+            ...(previous?.paid && previous.method
+              ? { method: previous.method }
+              : {}),
+          }
         : deleteField(),
     updatedAt: now(),
   });
 }
 
-/** Marks one custom column's amount collected, or takes the mark back off. */
+/**
+ * Marks one custom column's amount collected, or takes the mark back off.
+ *
+ * Taking the mark off drops the method with it. A charge that is no longer
+ * settled has no way it was paid, and leaving the id behind would have it
+ * counted in tomorrow's till reconciliation.
+ */
 export async function setRowExtraPaid(
   date: DateKey,
   rowId: string,
   columnId: string,
   paid: boolean,
+  method: PaymentMethodId | null,
 ): Promise<void> {
   await updateDoc(rowDoc(date, rowId), {
     [`extras.${columnId}.paid`]: paid,
+    [`extras.${columnId}.method`]: paid && method ? method : deleteField(),
     updatedAt: now(),
   });
 }
@@ -195,8 +213,13 @@ export async function setGymFeePaid(
   date: DateKey,
   rowId: string,
   paid: boolean,
+  method: PaymentMethodId | null,
 ): Promise<void> {
-  await updateDoc(rowDoc(date, rowId), { gymFeePaid: paid, updatedAt: now() });
+  await updateDoc(rowDoc(date, rowId), {
+    gymFeePaid: paid,
+    gymFeeMethod: paid && method ? method : deleteField(),
+    updatedAt: now(),
+  });
 }
 
 /** Marks one product line collected. Returns the new items array. */
@@ -206,10 +229,37 @@ export async function setItemPaid(
   current: SheetItem[],
   lineId: string,
   paid: boolean,
+  method: PaymentMethodId | null,
 ): Promise<SheetItem[]> {
-  const items = current.map((i) => (i.lineId === lineId ? { ...i, paid } : i));
+  const items = current.map((i) => {
+    if (i.lineId !== lineId) return i;
+    const next: SheetItem = { ...i, paid };
+    // Deleted rather than set to undefined: Firestore rejects an undefined
+    // field, and `deleteField` has no meaning inside an array.
+    if (paid && method) next.method = method;
+    else delete next.method;
+    return next;
+  });
   await updateDoc(rowDoc(date, rowId), { items, updatedAt: now() });
   return items;
+}
+
+/**
+ * Sets the method the desk has selected for this row.
+ *
+ * Deliberately does not touch charges already marked collected: the point of
+ * recording a method per charge is that a member who paid the floor fee in
+ * cash and their drink by Click ends up with both on the sheet.
+ */
+export async function setRowPaymentMethod(
+  date: DateKey,
+  rowId: string,
+  method: PaymentMethodId | null,
+): Promise<void> {
+  await updateDoc(rowDoc(date, rowId), {
+    paymentMethod: method,
+    updatedAt: now(),
+  });
 }
 
 export async function setRowDiscount(

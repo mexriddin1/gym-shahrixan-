@@ -17,7 +17,12 @@ import {
   listPayments,
   type Debtor,
 } from "@/lib/db/queries";
-import { PAYMENT_METHOD_LABELS, type Payment, type Subscription } from "@/lib/db/types";
+import {
+  paymentMethodLabel,
+  type Payment,
+  type PaymentMethod,
+  type Subscription,
+} from "@/lib/db/types";
 import { useResource } from "@/lib/db/use-resource";
 import { paidBySubscription } from "@/lib/db/money-mutations";
 import { subscriptionReceipt, type Receipt } from "@/lib/domain/receipt";
@@ -64,6 +69,15 @@ export default function MonthlyPage() {
     ]);
     return { debtors, payments, subs, settings };
   }, []);
+
+  /** What this gym takes, in picker order. Empty until settings land. */
+  const paymentMethods: PaymentMethod[] = useMemo(
+    () =>
+      [...(data?.settings.paymentMethods ?? [])].sort(
+        (a, b) => a.position - b.position,
+      ),
+    [data],
+  );
 
   const q = search.trim().toLowerCase();
 
@@ -254,7 +268,7 @@ export default function MonthlyPage() {
         header: "Turi",
         cell: ({ row }) => (
           <Badge variant="neutral">
-            {PAYMENT_METHOD_LABELS[row.original.method]}
+            {paymentMethodLabel(row.original.method, paymentMethods)}
           </Badge>
         ),
       },
@@ -363,9 +377,9 @@ export default function MonthlyPage() {
               className="w-32"
             >
               <option value="">Barcha turlar</option>
-              {Object.entries(PAYMENT_METHOD_LABELS).map(([v, l]) => (
-                <option key={v} value={v}>
-                  {l}
+              {paymentMethods.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
                 </option>
               ))}
             </Select>
@@ -414,6 +428,7 @@ export default function MonthlyPage() {
         open={payOpen}
         onOpenChange={setPayOpen}
         target={target}
+        methods={paymentMethods}
         onSaved={reload}
       />
 

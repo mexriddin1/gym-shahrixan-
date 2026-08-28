@@ -6,11 +6,11 @@ import { SpinnerIcon, TagIcon } from "@phosphor-icons/react";
 
 import { useAuth } from "@/lib/auth/auth-context";
 import { sellTariff } from "@/lib/db/money-mutations";
-import {
-  PAYMENT_METHOD_LABELS,
-  type Client,
-  type PaymentMethod,
-  type Tariff,
+import type {
+  Client,
+  PaymentMethod,
+  PaymentMethodId,
+  Tariff,
 } from "@/lib/db/types";
 import { computeFinalPrice } from "@/lib/domain/pricing";
 import { computeEndDate } from "@/lib/domain/subscription";
@@ -41,12 +41,15 @@ export function SellTariffDialog({
   onOpenChange,
   client,
   tariffs,
+  methods,
   onSaved,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   client: Client;
   tariffs: Tariff[];
+  /** What this gym takes, from Sozlamalar. */
+  methods: PaymentMethod[];
   onSaved: () => void;
 }) {
   const { staff } = useAuth();
@@ -56,13 +59,19 @@ export function SellTariffDialog({
   const [startDate, setStartDate] = useState(() => dateKey());
   const [discount, setDiscount] = useState(0);
   const [paidAmount, setPaidAmount] = useState(0);
-  const [method, setMethod] = useState<PaymentMethod>("cash");
+  const [method, setMethod] = useState<PaymentMethodId>("");
   const [busy, setBusy] = useState(false);
 
   const available = useMemo(
     () => tariffs.filter((t) => t.status === "active"),
     [tariffs],
   );
+
+  const ordered = useMemo(
+    () => [...methods].sort((a, b) => a.position - b.position),
+    [methods],
+  );
+  const defaultMethod = ordered[0]?.id ?? "";
 
   const [prevOpen, setPrevOpen] = useState(open);
   if (open !== prevOpen) {
@@ -72,7 +81,7 @@ export function SellTariffDialog({
       setStartDate(dateKey());
       setDiscount(0);
       setPaidAmount(0);
-      setMethod("cash");
+      setMethod(defaultMethod);
     }
   }
 
@@ -110,7 +119,7 @@ export function SellTariffDialog({
           endDate: null,
           endDateReason: null,
           paidAmount,
-          method,
+          method: method || defaultMethod,
           note: null,
         },
         actor,
@@ -231,11 +240,11 @@ export function SellTariffDialog({
                 <Select
                   id="method"
                   value={method}
-                  onChange={(e) => setMethod(e.target.value as PaymentMethod)}
+                  onChange={(e) => setMethod(e.target.value)}
                 >
-                  {Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
+                  {ordered.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
                     </option>
                   ))}
                 </Select>

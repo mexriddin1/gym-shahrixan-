@@ -1,12 +1,16 @@
 import {
   extrasTotal,
+  paymentMethodLabel,
+  rowCollectedByMethod,
   rowTotal,
   type DailySheetRow,
+  type PaymentMethod,
+  type PaymentMethodId,
   type SheetColumn,
   type Subscription,
 } from "@/lib/db/types";
 import { computeDebt } from "./pricing";
-import { formatDateKey, timestampDay } from "@/lib/utils";
+import { formatDateKey, formatSom, timestampDay } from "@/lib/utils";
 
 /** One printed line. `amount` null means the note carries the value instead. */
 export type ReceiptLine = {
@@ -42,6 +46,7 @@ export function dailyReceipt(
   row: DailySheetRow,
   date: string,
   columns: SheetColumn[] = [],
+  methods: PaymentMethod[] = [],
 ): Receipt {
   const lines: ReceiptLine[] = [];
 
@@ -78,6 +83,25 @@ export function dailyReceipt(
   const meta: { label: string; value: string }[] = [];
   if (row.keyNumber !== null) {
     meta.push({ label: "Kalit", value: String(row.keyNumber) });
+  }
+
+  // How the money actually came in. A member who settled the floor fee in cash
+  // and their drink by Click should be able to read both off the slip; a row
+  // with nothing collected yet says nothing rather than "0".
+  const split = new Map<PaymentMethodId | null, number>();
+  for (const c of rowCollectedByMethod(row)) {
+    split.set(c.method, (split.get(c.method) ?? 0) + c.amount);
+  }
+  if (split.size > 0) {
+    meta.push({
+      label: "To'lov",
+      value: [...split]
+        .map(
+          ([id, amount]) =>
+            `${paymentMethodLabel(id, methods)} ${formatSom(amount)}`,
+        )
+        .join(", "),
+    });
   }
 
   return {
