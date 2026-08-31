@@ -10,7 +10,11 @@
 
 import { readFileSync } from "node:fs";
 import { initializeApp } from "firebase/app";
-import { getAuth, signInAnonymously } from "firebase/auth";
+import {
+  getAuth,
+  signInAnonymously,
+  signInWithEmailAndPassword,
+} from "firebase/auth";
 import {
   connectFirestoreEmulator,
   getFirestore,
@@ -55,14 +59,39 @@ export async function connect(): Promise<{ db: Firestore; target: string }> {
     connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
   }
 
-  // Sign in if the project allows it. If the Anonymous provider is still off,
-  // carry on unauthenticated: open rules will accept the writes, and if they
-  // do not, the write itself reports a clear permission error.
+  /*
+   * Sign in as a staff member when credentials are supplied.
+   *
+   *   FIREBASE_EMAIL=... FIREBASE_PASSWORD=... npx tsx scripts/<script>.mts
+   *
+   * Needed because firestore.rules gates every collection on
+   * `request.auth != null`, and this project has the Anonymous provider
+   * switched off - so an unauthenticated script reads nothing and writes
+   * nothing, which the SDK reports as an empty offline cache rather than as
+   * an error. Falls back to anonymous where that provider is enabled.
+   */
+  const email = env.FIREBASE_EMAIL;
+  const password = env.FIREBASE_PASSWORD;
+
+  if (email && password) {
+    const cred = await signInWithEmailAndPassword(auth, email, password);
+    console.log(`Connected to ${target} (signed in as ${cred.user.email}).`);
+    return { db, target };
+  }
+
   try {
     await signInAnonymously(auth);
     console.log(`Connected to ${target} (anonymous session).`);
-  } catch {
-    console.log(`Connected to ${target} (no auth; relying on open rules).`);
+  } catch (e) {
+    const code = (e as { code?: string }).code ?? "unknown";
+    console.log(`Connected to ${target} (NOT signed in: ${code}).`);
+    console.log(
+      "  Rules require an authenticated session, so reads will come back",
+    );
+    console.log(
+      "  empty and writes will be refused. Set FIREBASE_EMAIL and",
+    );
+    console.log("  FIREBASE_PASSWORD to sign in as a staff member.");
   }
 
   return { db, target };

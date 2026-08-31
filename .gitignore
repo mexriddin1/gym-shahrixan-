@@ -47,3 +47,10 @@ next-env.d.ts
 
 # Local Netlify folder
 .netlify
+# Firestore dumps taken before a destructive migration. Real members, real
+# phone numbers, and this repository is public.
+backup-*.json
+
+# The member list the August 2026 import read from. Same reason: it is 179
+# people's names and phone numbers, not code.
+scripts/members-2026-08.txt
