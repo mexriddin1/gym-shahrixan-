@@ -28,9 +28,20 @@ type Option =
  *
  * Typing a full name and pressing Enter seats a walk-in. That is the common
  * case at the counter, so it is what the bare Enter does: the create option is
- * first in the list and highlighted by default. Existing members are one arrow
- * key away, and when the typed name matches one exactly the create option
- * disappears so nobody ends up with a duplicate of themselves.
+ * first in the list and highlighted by default. When the typed name matches a
+ * member exactly the create option disappears, so nobody ends up with a
+ * duplicate of themselves.
+ *
+ * Down also seats them. The desk works down the sheet a name at a time and
+ * reaches for the arrow to get to the next line, which is what every other
+ * cell on this grid does; making it mean something else here was a stop in a
+ * job that is meant to be continuous. Focus stays on this input, which by then
+ * has been pushed one row down by the row just added.
+ *
+ * That leaves Up to browse the list, and it wraps: from the create option at
+ * the top it lands on the last match and keeps going up. Without the wrap the
+ * members below would be unreachable by keyboard, since Down no longer walks
+ * into them.
  */
 export function NewRowInput({
   clients,
@@ -132,15 +143,14 @@ export function NewRowInput({
   }
 
   function onKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setHighlight((h) => Math.min(h + 1, options.length - 1));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setHighlight((h) => Math.max(h - 1, 0));
-    } else if (e.key === "Enter") {
+    if (e.key === "ArrowDown" || e.key === "Enter") {
       e.preventDefault();
       void commit(options[highlight]);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      // Wraps, so the members under the create option are still reachable now
+      // that Down commits instead of stepping into them.
+      setHighlight((h) => (options.length ? (h - 1 + options.length) % options.length : 0));
     } else if (e.key === "Escape") {
       e.preventDefault();
       setValue("");
@@ -204,8 +214,8 @@ export function NewRowInput({
                           - kunlik mijoz
                         </span>
                       </span>
-                      <span className="nums ml-auto shrink-0 text-[0.65rem] text-muted-foreground">
-                        Enter
+                      <span className="ml-auto shrink-0 text-[0.65rem] text-muted-foreground">
+                        Enter yoki &darr;
                       </span>
                     </button>
                   </li>
