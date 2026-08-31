@@ -1,4 +1,5 @@
 import {
+  CalendarCheckIcon,
   ChartBarIcon,
   ClockCountdownIcon,
   MoneyIcon,
@@ -17,9 +18,9 @@ export type NavItem = {
 };
 
 /**
- * Six working screens plus settings.
+ * Seven working screens plus settings.
  *
- * Deliberately flat: at seven items a grouped sidebar is scaffolding around
+ * Deliberately flat: at eight items a grouped sidebar is scaffolding around
  * nothing. Orders and stock movements were folded into the daily sheet, where
  * the desk already records what a member bought; tariffs, the worker list and
  * the PIN live in settings because they are configured once and then left
@@ -35,6 +36,10 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Obunalar", href: "/obunalar", icon: ClockCountdownIcon },
   { label: "Oylik", href: "/oylik", icon: WalletIcon },
   { label: "Avans", href: "/avans", icon: MoneyIcon },
+  // Bugun sits directly before Hisobot because it is the same question asked
+  // of one day: the desk reaches for it at closing time, and for the range
+  // report only when somebody asks about a month.
+  { label: "Bugun", href: "/bugun", icon: CalendarCheckIcon },
   { label: "Hisobot", href: "/hisobot", icon: ChartBarIcon },
   { label: "Sozlamalar", href: "/sozlamalar", icon: GearIcon },
 ];
