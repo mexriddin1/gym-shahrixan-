@@ -1,6 +1,7 @@
 import {
   ChartBarIcon,
   ClockCountdownIcon,
+  MoneyIcon,
   TableIcon,
   UsersIcon,
   WalletIcon,
@@ -16,18 +17,24 @@ export type NavItem = {
 };
 
 /**
- * Five working screens plus settings.
+ * Six working screens plus settings.
  *
- * Deliberately flat: at six items a grouped sidebar is scaffolding around
+ * Deliberately flat: at seven items a grouped sidebar is scaffolding around
  * nothing. Orders and stock movements were folded into the daily sheet, where
- * the desk already records what a member bought; tariffs and the PIN live in
- * settings because they are configured once and then left alone.
+ * the desk already records what a member bought; tariffs, the worker list and
+ * the PIN live in settings because they are configured once and then left
+ * alone.
+ *
+ * Avans sits after the money screens and before the report, which is where it
+ * falls in the day: takings first, what went back out second, the summary of
+ * both last.
  */
 export const NAV_ITEMS: NavItem[] = [
   { label: "Kunlik hisob", href: "/kunlik", icon: TableIcon },
   { label: "Mijozlar", href: "/mijozlar", icon: UsersIcon },
   { label: "Obunalar", href: "/obunalar", icon: ClockCountdownIcon },
   { label: "Oylik", href: "/oylik", icon: WalletIcon },
+  { label: "Avans", href: "/avans", icon: MoneyIcon },
   { label: "Hisobot", href: "/hisobot", icon: ChartBarIcon },
   { label: "Sozlamalar", href: "/sozlamalar", icon: GearIcon },
 ];

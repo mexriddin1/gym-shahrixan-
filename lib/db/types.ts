@@ -404,6 +404,65 @@ export const DEFAULT_SETTINGS: Omit<Settings, "updatedAt"> = {
   paymentMethods: DEFAULT_PAYMENT_METHODS,
 };
 
+/* ------------------------------------------------------------------ */
+/* Staff wages - the people who work here, and what they draw early   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Someone on the gym's payroll.
+ *
+ * Deliberately not the same thing as `Staff`. Staff is an account that signs
+ * in and holds a PIN hash; a worker is a person the gym pays. A cleaner who
+ * never touches the terminal is a worker and not staff, and a manager can be
+ * both without those two facts having to be kept in step.
+ *
+ * A name and nothing else. Rates, contracts and hours are a payroll system,
+ * and this is a sheet that answers one question: how much has this person
+ * already taken this month.
+ */
+export type Worker = {
+  id: string;
+  code: number;
+  firstName: string;
+  lastName: string | null;
+  createdBy: string | null;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+};
+
+/** Full name for display. Never leaves a trailing space when there is no surname. */
+export function workerFullName(
+  worker: Pick<Worker, "firstName" | "lastName">,
+): string {
+  return `${worker.firstName} ${worker.lastName ?? ""}`.trim();
+}
+
+/**
+ * One worker's advance on one day.
+ *
+ * The document id IS the worker id, under `worker_advances/{date}/rows`. One
+ * person can only have drawn one amount on one day, so keying by worker makes
+ * that true in the database rather than something the screen has to enforce -
+ * a second write for the same day corrects the first instead of stacking on
+ * top of it.
+ *
+ * The name is snapshotted the same way a sold product's is: a worker leaving
+ * and being deleted must not blank out what the gym paid out last month.
+ *
+ * A day with nothing drawn holds no documents at all. Zero is written by
+ * deleting the row, so "nobody took an advance" costs nothing to store and
+ * cannot be confused with "somebody took zero".
+ */
+export type WorkerAdvance = {
+  /** The worker id. */
+  id: string;
+  workerName: string;
+  amount: number;
+  createdBy: string | null;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+};
+
 export type AuditAction = "create" | "update" | "delete" | "cancel" | "restore";
 
 export type AuditEntry = {

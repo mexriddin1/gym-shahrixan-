@@ -53,6 +53,7 @@ app/
   (app)/                authenticated shell
     dashboard/          takings, check-ins, expiring subscriptions
     kunlik/             the daily tracking sheet
+    avans/              wage advances, one row per worker per day
 components/
   app/                  shell, sidebar, topbar, dialogs
   grid/                 cell navigation + editable money cells
@@ -77,6 +78,10 @@ extending the end date.
   `product.qty`.
 - Subscription `expired` / `expiring` are derived from dates, never stored.
 - Debt is derived as `finalPrice - sum(payments)`, never stored.
+- Member and worker names are normalised on write (`lib/domain/names.ts`), so
+  the same person cannot be stored as both "ali valiv" and "ALI VALIV".
+- Wage advances are money *out*. The report keeps them in their own column and
+  subtracts them into `Sof`; `Jami` always means what came in.
 - Icons are Phosphor. The one exception is `components/app/brand-panel.tsx`,
   which is frozen and uses Lucide to stay pixel-identical to the v1 landing.
 - No em-dashes in user-facing copy. `brand-panel.tsx` is the sole exception and

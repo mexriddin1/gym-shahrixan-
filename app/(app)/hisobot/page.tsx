@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 
 import {
   getSheetRowsForDates,
+  getWorkerAdvancesForDates,
   listAllSubscriptions,
   listClients,
   listDebtors,
@@ -81,8 +82,9 @@ export default function ReportPage() {
 
   const { data, loading, error, reload } = useResource(async () => {
     const dates = datesInRange(range);
-    const [sheet, payments, subs, clients, debtors] = await Promise.all([
+    const [sheet, advances, payments, subs, clients, debtors] = await Promise.all([
       getSheetRowsForDates(dates),
+      getWorkerAdvancesForDates(dates),
       listPayments(),
       listAllSubscriptions(),
       listClients(),
@@ -92,7 +94,7 @@ export default function ReportPage() {
     // The dates travel with their sheets. Deriving them separately let the two
     // fall out of step while a longer range was still loading, and the report
     // read past the end of the array.
-    return { dates, sheets, payments, subs, clients, debtors };
+    return { dates, sheets, advances, payments, subs, clients, debtors };
   }, [range.from, range.to]);
 
   const daily = useMemo(() => {
@@ -108,13 +110,23 @@ export default function ReportPage() {
         .filter((p) => timestampDay(p.paidAt) === date)
         .reduce((s, p) => s + p.amount, 0);
 
+      // Money out. Kept as its own figure rather than folded into `total`,
+      // which has to keep meaning what came in.
+      const advance = (data.advances.get(date) ?? []).reduce(
+        (s, a) => s + a.amount,
+        0,
+      );
+      const total = takings + subscriptions;
+
       return {
         date,
         visitors: sheet.rows.length,
         products,
         floor: takings - products,
         subscriptions,
-        total: takings + subscriptions,
+        total,
+        advance,
+        net: total - advance,
       };
     });
   }, [data]);
@@ -187,9 +199,39 @@ export default function ReportPage() {
       floor: a.floor + r.floor,
       subscriptions: a.subscriptions + r.subscriptions,
       total: a.total + r.total,
+      advance: a.advance + r.advance,
+      net: a.net + r.net,
     }),
-    { visitors: 0, products: 0, floor: 0, subscriptions: 0, total: 0 },
+    {
+      visitors: 0,
+      products: 0,
+      floor: 0,
+      subscriptions: 0,
+      total: 0,
+      advance: 0,
+      net: 0,
+    },
   );
+
+  /**
+   * Advances over the period, per worker, biggest first.
+   *
+   * Grouped by the name each advance was recorded under rather than by worker
+   * id, so somebody who has since been taken off the payroll still appears
+   * against the money they were actually paid.
+   */
+  const advancesByWorker = useMemo(() => {
+    if (!data) return [];
+    const map = new Map<string, number>();
+    for (const rows of data.advances.values()) {
+      for (const a of rows) {
+        map.set(a.workerName, (map.get(a.workerName) ?? 0) + a.amount);
+      }
+    }
+    return [...map.entries()]
+      .map(([name, amount]) => ({ name, amount }))
+      .sort((a, b) => b.amount - a.amount);
+  }, [data]);
 
   const outstanding = (data?.debtors ?? []).reduce((s, d) => s + d.debt, 0);
 
@@ -361,11 +403,13 @@ export default function ReportPage() {
             <table className="w-full table-fixed border-collapse text-xs">
               <colgroup>
                 <col className="w-28" />
-                <col className="w-24" />
+                <col className="w-20" />
                 <col />
                 <col />
                 <col />
-                <col className="w-32" />
+                <col className="w-28" />
+                <col className="w-28" />
+                <col className="w-28" />
               </colgroup>
               <thead>
                 <tr className="bg-grid-header">
@@ -374,7 +418,12 @@ export default function ReportPage() {
                   <Th className="text-right">Mahsulot</Th>
                   <Th className="text-right">Zal</Th>
                   <Th className="text-right">Abonement</Th>
+                  {/* Jami is what came in. Avans is what went back out to
+                      staff, and Sof is the difference - so no single column
+                      has to mean two opposite things. */}
                   <Th className="text-right">Jami</Th>
+                  <Th className="text-right">Avans</Th>
+                  <Th className="text-right">Sof</Th>
                 </tr>
               </thead>
               <tbody>
@@ -403,6 +452,17 @@ export default function ReportPage() {
                     <Td className="nums text-right font-medium">
                       {r.total ? formatSom(r.total) : "-"}
                     </Td>
+                    <Td
+                      className={cn(
+                        "nums text-right",
+                        r.advance > 0 && "text-status-debt-foreground",
+                      )}
+                    >
+                      {r.advance ? formatSom(r.advance) : "-"}
+                    </Td>
+                    <Td className="nums text-right font-medium">
+                      {r.net || r.total ? formatSom(r.net) : "-"}
+                    </Td>
                   </tr>
                 ))}
               </tbody>
@@ -418,6 +478,17 @@ export default function ReportPage() {
                   <Td className="nums text-right font-semibold">
                     {formatSom(totals.total)}
                   </Td>
+                  <Td
+                    className={cn(
+                      "nums text-right font-semibold",
+                      totals.advance > 0 && "text-status-debt-foreground",
+                    )}
+                  >
+                    {formatSom(totals.advance)}
+                  </Td>
+                  <Td className="nums text-right font-semibold">
+                    {formatSom(totals.net)}
+                  </Td>
                 </tr>
               </tfoot>
             </table>
@@ -425,17 +496,91 @@ export default function ReportPage() {
             <Pagination {...dailyPaged} onPageChange={dailyPaged.setPage} />
           </Section>
 
-          <p className="text-sm">
-            <span className="text-muted-foreground">Yopilmagan qarz: </span>
-            <span
-              className={cn(
-                "nums font-medium",
-                outstanding > 0 && "text-status-debt-foreground",
-              )}
-            >
-              {formatSom(outstanding)} so&apos;m
-            </span>
-          </p>
+          {/* Ishchilar avansi */}
+          <Section title="Ishchilar avansi">
+            <table className="w-full table-fixed border-collapse text-xs">
+              <colgroup>
+                <col />
+                <col className="w-32" />
+              </colgroup>
+              <thead>
+                <tr className="bg-grid-header">
+                  <Th className="text-left">Ishchi</Th>
+                  <Th className="text-right">Summa</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {advancesByWorker.length === 0 ? (
+                  <tr>
+                    <Td colSpan={2} className="text-center text-muted-foreground">
+                      Bu davrda avans berilmagan
+                    </Td>
+                  </tr>
+                ) : (
+                  advancesByWorker.map((w) => (
+                    <tr
+                      key={w.name}
+                      className="border-b border-grid-line last:border-0"
+                    >
+                      <Td className="text-left">{w.name}</Td>
+                      <Td className="nums text-right font-medium">
+                        {formatSom(w.amount)}
+                      </Td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+              {advancesByWorker.length > 0 ? (
+                <tfoot>
+                  <tr className="border-t-2 border-border bg-grid-header font-medium">
+                    <Td className="text-left">Jami</Td>
+                    <Td className="nums text-right font-semibold">
+                      {formatSom(totals.advance)}
+                    </Td>
+                  </tr>
+                </tfoot>
+              ) : null}
+            </table>
+          </Section>
+
+          <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 text-sm">
+            {/* The one line that puts the whole period together: what came in,
+                what went back out in advances, and what is left. */}
+            <p>
+              <span className="text-muted-foreground">Tushum: </span>
+              <span className="nums font-medium">
+                {formatSom(totals.total)} so&apos;m
+              </span>
+            </p>
+            <p>
+              <span className="text-muted-foreground">Avans: </span>
+              <span
+                className={cn(
+                  "nums font-medium",
+                  totals.advance > 0 && "text-status-debt-foreground",
+                )}
+              >
+                {formatSom(totals.advance)} so&apos;m
+              </span>
+            </p>
+            <p>
+              <span className="text-muted-foreground">Sof: </span>
+              <span className="nums font-semibold">
+                {formatSom(totals.net)} so&apos;m
+              </span>
+            </p>
+            <p>
+              <span className="text-muted-foreground">Yopilmagan qarz: </span>
+              <span
+                className={cn(
+                  "nums font-medium",
+                  outstanding > 0 && "text-status-debt-foreground",
+                )}
+              >
+                {formatSom(outstanding)} so&apos;m
+              </span>
+            </p>
+          </div>
         </>
       )}
     </div>

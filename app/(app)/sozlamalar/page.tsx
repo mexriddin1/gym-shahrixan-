@@ -9,6 +9,7 @@ import { isValidPinFormat, PIN_LENGTH } from "@/lib/auth/pin";
 import { PageHeader } from "@/components/app/app-shell";
 import { TariffSection } from "@/components/app/tariff-section";
 import { ProductSection } from "@/components/app/product-section";
+import { WorkerSection } from "@/components/app/worker-section";
 import { ReceiptSettingsSection } from "@/components/app/receipt-settings-section";
 import { SheetColumnSection } from "@/components/app/sheet-column-section";
 import { PaymentMethodSection } from "@/components/app/payment-method-section";
@@ -28,12 +29,14 @@ export default function SettingsPage() {
     <div className="max-w-3xl space-y-6">
       <PageHeader
         title="Sozlamalar"
-        subtitle="Tariflar, mahsulotlar, jadval ustunlari, to'lov turlari, chek, ko'rinish va PIN kod"
+        subtitle="Tariflar, mahsulotlar, ishchilar, jadval ustunlari, to'lov turlari, chek, ko'rinish va PIN kod"
       />
 
       <TariffSection />
 
       <ProductSection />
+
+      <WorkerSection />
 
       <SheetColumnSection
         columns={settings.data?.sheetColumns ?? []}

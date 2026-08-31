@@ -18,6 +18,8 @@ import {
   staffRef,
   subscriptionsRef,
   tariffsRef,
+  workerAdvancesRef,
+  workersRef,
 } from "./collections";
 import type {
   Client,
@@ -31,6 +33,8 @@ import type {
   Staff,
   Subscription,
   Tariff,
+  Worker,
+  WorkerAdvance,
 } from "./types";
 import { DEFAULT_SETTINGS } from "./types";
 import { byCatalogueOrder } from "@/lib/domain/catalogue";
@@ -66,12 +70,28 @@ export async function getSettings(): Promise<Settings> {
  * should flip back to indexed queries with real pagination.
  */
 
+/**
+ * Newest registration first.
+ *
+ * The alphabet is the wrong order for a desk: nobody arrives looking for the
+ * letter A. The member somebody is dealing with right now is almost always
+ * the one just registered, so that is the row that should be at the top.
+ * Falls back to the code for records written before `createdAt` existed, which
+ * runs in the same direction because codes are handed out in sequence.
+ */
+export function byNewestFirst(a: Client, b: Client): number {
+  const at = a.createdAt?.toMillis?.() ?? 0;
+  const bt = b.createdAt?.toMillis?.() ?? 0;
+  if (at !== bt) return bt - at;
+  return (b.code ?? 0) - (a.code ?? 0);
+}
+
 export async function listClients(): Promise<Client[]> {
   const snap = await getDocs(clientsRef());
   return snap.docs
     .map((d) => d.data())
     .filter((c) => c.status !== "archived")
-    .sort((a, b) => a.firstName.localeCompare(b.firstName, "uz"));
+    .sort(byNewestFirst);
 }
 
 export async function getClient(id: string): Promise<Client | null> {
@@ -228,9 +248,7 @@ export async function listStaff(): Promise<Staff[]> {
 /** Every member, archived ones included. Only the members screen wants these. */
 export async function listAllClients(): Promise<Client[]> {
   const snap = await getDocs(clientsRef());
-  return snap.docs
-    .map((d) => d.data())
-    .sort((a, b) => a.firstName.localeCompare(b.firstName, "uz"));
+  return snap.docs.map((d) => d.data()).sort(byNewestFirst);
 }
 
 /* --------------------------- daily sheet --------------------------- */
@@ -335,6 +353,57 @@ export async function getSheetRowsForDates(
   );
 
   return { rows: new Map(entries), products };
+}
+
+/* ----------------------------- wages ----------------------------- */
+
+/**
+ * The payroll, oldest hire first.
+ *
+ * The opposite of the members list, and deliberately so. The advance sheet
+ * puts one row per worker and is read every day, so the order has to be the
+ * same today as it was yesterday - somebody looking for the third name down
+ * should find the same person. Members are sorted newest-first because that
+ * list is searched, not memorised.
+ */
+export async function listWorkers(): Promise<Worker[]> {
+  const snap = await getDocs(workersRef());
+  return snap.docs
+    .map((d) => d.data())
+    .sort((a, b) => {
+      const at = a.createdAt?.toMillis?.() ?? 0;
+      const bt = b.createdAt?.toMillis?.() ?? 0;
+      if (at !== bt) return at - bt;
+      return (a.code ?? 0) - (b.code ?? 0);
+    });
+}
+
+/** What each worker drew on one day, keyed by worker id. */
+export async function getWorkerAdvances(
+  date: DateKey,
+): Promise<Map<string, WorkerAdvance>> {
+  const snap = await getDocs(workerAdvancesRef(date));
+  return new Map(snap.docs.map((d) => [d.id, d.data()]));
+}
+
+/**
+ * Advances across a span of days, for the report and the month-to-date column.
+ *
+ * One small collection read per day, the same shape `getSheetRowsForDates`
+ * uses and for the same reason: a collection group query over the whole of
+ * `rows` would need a composite index created by hand in the console before
+ * any of this worked at all.
+ */
+export async function getWorkerAdvancesForDates(
+  dates: DateKey[],
+): Promise<Map<DateKey, WorkerAdvance[]>> {
+  const entries = await Promise.all(
+    dates.map(async (date) => {
+      const snap = await getDocs(workerAdvancesRef(date));
+      return [date, snap.docs.map((d) => d.data())] as const;
+    }),
+  );
+  return new Map(entries);
 }
 
 export type SheetHistoryDay = { date: DateKey; rows: DailySheetRow[] };

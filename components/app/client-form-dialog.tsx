@@ -7,6 +7,7 @@ import { SpinnerIcon } from "@phosphor-icons/react";
 import { useAuth } from "@/lib/auth/auth-context";
 import { createClient, updateClient, type ClientInput } from "@/lib/db/mutations";
 import type { Client } from "@/lib/db/types";
+import { normaliseOptionalName, normalisePersonName } from "@/lib/domain/names";
 import {
   Dialog,
   DialogContent,
@@ -110,10 +111,13 @@ export function ClientFormDialog({
 
     setBusy(true);
     try {
+      // The mutation applies the same rule, so this is not what makes the
+      // stored name right - it is here so the field the staff member is
+      // looking at agrees with what is about to be written.
       const clean: ClientInput = {
         ...form,
-        firstName: form.firstName.trim(),
-        lastName: form.lastName?.trim() || null,
+        firstName: normalisePersonName(form.firstName),
+        lastName: normaliseOptionalName(form.lastName),
         phone: form.phone?.replace(/\D/g, "") || null,
         phone2: form.phone2?.replace(/\D/g, "") || null,
       };
@@ -148,12 +152,16 @@ export function ClientFormDialog({
 
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           <div className="grid gap-4 sm:grid-cols-2">
+            {/* Tidied on the way out of the field, not on every keystroke:
+                fixing the case under someone's fingers as they type makes the
+                input feel like it is fighting them. */}
             <Field label="Ism" htmlFor="firstName" error={errors.firstName} required>
               <Input
                 id="firstName"
                 autoFocus
                 value={form.firstName}
                 onChange={(e) => set("firstName", e.target.value)}
+                onBlur={() => set("firstName", normalisePersonName(form.firstName))}
                 aria-invalid={!!errors.firstName}
               />
             </Field>
@@ -163,6 +171,7 @@ export function ClientFormDialog({
                 id="lastName"
                 value={form.lastName ?? ""}
                 onChange={(e) => set("lastName", e.target.value || null)}
+                onBlur={() => set("lastName", normaliseOptionalName(form.lastName))}
               />
             </Field>
 

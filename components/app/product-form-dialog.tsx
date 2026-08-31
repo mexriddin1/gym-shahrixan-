@@ -20,16 +20,18 @@ import { Button } from "@/components/ui/button";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 
+/**
+ * A product is a name, a price and what it is counted in.
+ *
+ * Cost price, turkum, barcode, supplier and minimum stock were dropped from
+ * the form: nothing in the app read them, and every unused field is one more
+ * thing to fill in while somebody waits at the counter. The columns still
+ * exist on the document, so a product that already carries them keeps them.
+ */
 const EMPTY: ProductInput = {
   name: "",
-  category: null,
-  barcode: null,
-  costPrice: 0,
   sellPrice: 0,
-  minQty: 0,
   unit: "dona",
-  supplier: null,
-  imageUrl: null,
   note: null,
   status: "active",
 };
@@ -37,14 +39,8 @@ const EMPTY: ProductInput = {
 function toInput(p: Product): ProductInput {
   return {
     name: p.name,
-    category: p.category,
-    barcode: p.barcode,
-    costPrice: p.costPrice,
     sellPrice: p.sellPrice,
-    minQty: p.minQty,
     unit: p.unit,
-    supplier: p.supplier,
-    imageUrl: p.imageUrl,
     note: p.note,
     status: p.status,
   };
@@ -93,8 +89,6 @@ export function ProductFormDialog({
     const next: Record<string, string> = {};
     if (!form.name.trim()) next.name = "Mahsulot nomi majburiy";
     if (form.sellPrice <= 0) next.sellPrice = "Sotish narxi 0 dan katta bo'lishi kerak";
-    if (form.costPrice < 0) next.costPrice = "Kelgan narxi manfiy bo'lmasligi kerak";
-    if (form.minQty < 0) next.minQty = "Minimal zaxira manfiy bo'lmasligi kerak";
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -108,10 +102,6 @@ export function ProductFormDialog({
       const clean: ProductInput = {
         ...form,
         name: form.name.trim(),
-        category: form.category?.trim() || null,
-        barcode: form.barcode?.trim() || null,
-        supplier: form.supplier?.trim() || null,
-        imageUrl: form.imageUrl?.trim() || null,
         note: form.note?.trim() || null,
       };
       if (product) {
@@ -130,8 +120,6 @@ export function ProductFormDialog({
     }
   }
 
-  const margin = form.sellPrice - form.costPrice;
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
@@ -142,7 +130,7 @@ export function ProductFormDialog({
           <DialogDescription>
             {product
               ? "Narx va ma'lumotlarni o'zgartiring"
-              : "Zaxira Ombor bo'limida kirim qilinadi"}
+              : "Kunlik varaqada mijozga biriktirish uchun"}
           </DialogDescription>
         </DialogHeader>
 
@@ -159,38 +147,13 @@ export function ProductFormDialog({
               />
             </Field>
 
-            <Field label="Turkum" htmlFor="category" helper="Ixtiyoriy">
-              <Input
-                id="category"
-                value={form.category ?? ""}
-                onChange={(e) => set("category", e.target.value || null)}
-                placeholder="Ichimlik, sport ozuqasi"
-              />
-            </Field>
-
-            <Field
-              label="Kelgan narxi"
-              htmlFor="costPrice"
-              error={errors.costPrice}
-              helper={form.costPrice > 0 ? `${formatSom(form.costPrice)} so'm` : "So'mda"}
-            >
-              <Input
-                id="costPrice"
-                inputMode="numeric"
-                value={form.costPrice || ""}
-                onChange={(e) => set("costPrice", Number(e.target.value) || 0)}
-                aria-invalid={!!errors.costPrice}
-                className="nums"
-              />
-            </Field>
-
             <Field
               label="Sotish narxi"
               htmlFor="sellPrice"
               error={errors.sellPrice}
               helper={
-                form.sellPrice > 0 && form.costPrice > 0
-                  ? `Foyda ${formatSom(margin)} so'm`
+                form.sellPrice > 0
+                  ? `${formatSom(form.sellPrice)} so'm`
                   : "So'mda"
               }
               required
@@ -205,23 +168,7 @@ export function ProductFormDialog({
               />
             </Field>
 
-            <Field
-              label="Minimal zaxira"
-              htmlFor="minQty"
-              error={errors.minQty}
-              helper="Shu songa yetganda ogohlantiriladi"
-            >
-              <Input
-                id="minQty"
-                inputMode="numeric"
-                value={form.minQty || ""}
-                onChange={(e) => set("minQty", Number(e.target.value) || 0)}
-                aria-invalid={!!errors.minQty}
-                className="nums"
-              />
-            </Field>
-
-            <Field label="O'lchov birligi" htmlFor="unit">
+            <Field label="O'lchov turi" htmlFor="unit">
               <Select
                 id="unit"
                 value={form.unit}
@@ -232,14 +179,6 @@ export function ProductFormDialog({
                 <option value="kg">kg</option>
                 <option value="quti">quti</option>
               </Select>
-            </Field>
-
-            <Field label="Yetkazib beruvchi" htmlFor="supplier">
-              <Input
-                id="supplier"
-                value={form.supplier ?? ""}
-                onChange={(e) => set("supplier", e.target.value || null)}
-              />
             </Field>
 
             <Field label="Holati" htmlFor="status">

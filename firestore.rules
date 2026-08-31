@@ -39,12 +39,20 @@ service cloud.firestore {
     match /stock_movements/{id}      { allow read, write: if signedIn(); }
     match /orders/{id}               { allow read, write: if signedIn(); }
     match /subscription_freezes/{id} { allow read, write: if signedIn(); }
+    match /workers/{id}              { allow read, write: if signedIn(); }
     match /settings/{id}             { allow read, write: if signedIn(); }
     match /counters/{entity}         { allow read, write: if signedIn(); }
 
     match /daily_sheets/{date} {
       allow read, write: if signedIn();
       match /rows/{rowId} { allow read, write: if signedIn(); }
+    }
+
+    // Wage advances. No document is written at the day itself - only the rows
+    // under it - so the day match exists to carry the subcollection rule.
+    match /worker_advances/{date} {
+      allow read, write: if signedIn();
+      match /rows/{workerId} { allow read, write: if signedIn(); }
     }
 
     // Audit log stays append-only. Roles are enforced in the client, but this

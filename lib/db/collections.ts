@@ -25,6 +25,8 @@ import type {
   SubscriptionFreeze,
   Tariff,
   Visit,
+  Worker,
+  WorkerAdvance,
 } from "./types";
 
 export function db(): Firestore {
@@ -72,6 +74,7 @@ export const ordersRef = () => typed<Order>("orders");
 export const freezesRef = () => typed<SubscriptionFreeze>("subscription_freezes");
 export const auditRef = () => typed<AuditEntry>("audit_log");
 export const staffRef = () => typed<Staff>("staff");
+export const workersRef = () => typed<Worker>("workers");
 
 export const settingsDoc = () =>
   doc(db(), "settings", "app").withConverter(plainConverter<Settings>());
@@ -89,6 +92,20 @@ export const dailySheetRowsRef = (date: string) =>
     converter<DailySheetRow>(),
   );
 
+/**
+ * worker_advances/{YYYY-MM-DD}/rows/{workerId}
+ *
+ * No parent document is written for the day. Firestore is happy to hold a
+ * subcollection under a path that has no document at it, and there is nothing
+ * a day-level record would carry here: the advance sheet has no open/closed
+ * state and no totals of its own, so an empty parent would exist only to be
+ * kept in step with its own children.
+ */
+export const workerAdvancesRef = (date: string) =>
+  collection(db(), "worker_advances", date, "rows").withConverter(
+    converter<WorkerAdvance>(),
+  );
+
 /** counters/{entity} holds the last allocated human-facing `code`. */
 export const counterDoc = (entity: CounterName) => doc(db(), "counters", entity);
 
@@ -100,9 +117,16 @@ export type CounterName =
   | "visits"
   | "products"
   | "stock_movements"
-  | "orders";
+  | "orders"
+  | "workers";
 
-/** Starting values match the Postgres IDENTITY seeds in schema.sql. */
+/**
+ * Starting values match the Postgres IDENTITY seeds in schema.sql.
+ *
+ * `workers` is the exception: it has no counterpart in that schema, and a gym
+ * has a handful of them rather than thousands, so it counts from 1. A worker
+ * numbered #1 reads as the first employee; #1001 would only be pretending.
+ */
 export const COUNTER_START: Record<CounterName, number> = {
   clients: 1000,
   tariffs: 100,
@@ -112,4 +136,5 @@ export const COUNTER_START: Record<CounterName, number> = {
   products: 1000,
   stock_movements: 1000,
   orders: 1000,
+  workers: 1,
 };

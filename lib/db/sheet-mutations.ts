@@ -9,6 +9,7 @@ import {
 
 import { dailySheetDoc, dailySheetRowsRef, db } from "./collections";
 import { now, writeAudit, type Actor } from "./write";
+import { normalisePersonName } from "@/lib/domain/names";
 import {
   newLineId,
   type DateKey,
@@ -63,10 +64,15 @@ export async function addSheetRow(
   actor: Actor,
 ): Promise<string> {
   const ref = doc(dailySheetRowsRef(date));
+  // Same spelling rule as a member profile. A walk-in is typed straight onto
+  // the sheet and never passes through the member form, so without this the
+  // day's rows are the one place in the app where "ali valiv" survives - and
+  // the walk-in list groups a returning visitor by name.
+  const clientName = normalisePersonName(row.clientName);
   await setDoc(ref, {
     position: nextPosition(row.existing),
     clientId: row.clientId,
-    clientName: row.clientName,
+    clientName,
     // The key is handed over at the desk, so the row starts without one.
     keyNumber: null,
     gymFeeMode: row.gymFeeMode,
@@ -85,7 +91,7 @@ export async function addSheetRow(
     action: "create",
     entity: "daily_sheet_row",
     entityId: ref.id,
-    after: { date, clientName: row.clientName },
+    after: { date, clientName },
   });
 
   return ref.id;
