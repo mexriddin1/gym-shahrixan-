@@ -45,6 +45,14 @@ type Row = Client & {
   subStart: string | null;
   subEnd: string | null;
   /**
+   * When the sale was recorded, in millis.
+   *
+   * Separate from `subStart`, which is only a calendar day: several members
+   * buy on the same day and the list still has to put them in the order they
+   * actually walked in.
+   */
+  subSoldAt: number;
+  /**
    * What they are on right now, as the subscription recorded it. Read from the
    * subscription rather than the tariff it points at, so renaming or repricing
    * a tariff never rewrites what someone was actually sold.
@@ -53,6 +61,31 @@ type Row = Client & {
   /** Total still owed across all of this member's subscriptions. */
   debt: number;
 };
+
+/**
+ * Whoever bought most recently is at the top.
+ *
+ * The list is ordered by the subscription, not by when the member record was
+ * made. Those are the same thing for someone registering at the counter, but
+ * not after a bulk import, where every record was created in the same second
+ * and the order collapsed to whatever the imported sheet happened to list
+ * first. What the desk is looking for is who paid today, then yesterday, and
+ * so on down.
+ *
+ * Members with no subscription at all sit below everyone who has one - there
+ * is no date to place them by, and they are not what this ordering is for.
+ */
+function byNewestSubscription(a: Row, b: Row): number {
+  if (!a.subStart !== !b.subStart) return a.subStart ? -1 : 1;
+  if (a.subStart && b.subStart && a.subStart !== b.subStart) {
+    return a.subStart < b.subStart ? 1 : -1;
+  }
+  // Same day, so fall back to the moment of sale, then to the member number.
+  // Without a final tiebreak the order of a day's sales is Firestore's, which
+  // is arbitrary and changes between reloads.
+  if (a.subSoldAt !== b.subSoldAt) return b.subSoldAt - a.subSoldAt;
+  return (b.code ?? 0) - (a.code ?? 0);
+}
 
 /** Everything on an overdue row reads red, not just the date. */
 const overdue = (r: Row) => r.subStatus === "expired" && r.status !== "archived";
@@ -128,10 +161,11 @@ export default function ClientsPage() {
         subStatus: sub ? derivedStatus(sub, today, warn) : null,
         subStart: sub?.startDate ?? null,
         subEnd: sub?.endDate ?? null,
+        subSoldAt: sub?.createdAt?.toMillis?.() ?? 0,
         tariff: sub?.tariffName ?? null,
         debt: owed.get(c.id) ?? 0,
       };
-    });
+    }).sort(byNewestSubscription);
   }, [data]);
 
   const query = search.trim().toLowerCase();
