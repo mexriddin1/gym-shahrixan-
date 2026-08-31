@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { PrinterIcon } from "@phosphor-icons/react";
 
@@ -27,18 +27,24 @@ import {
   timestampDay,
 } from "@/lib/utils";
 import { PageHeader } from "@/components/app/app-shell";
+import { DayTabs } from "@/components/app/day-tabs";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/ui/states";
 
 /**
- * Today, and only today.
+ * One day, closed off.
  *
  * Hisobot answers "how did the last two weeks go" and opens on a range
- * picker. This answers the question actually asked at closing time - what is
- * in the till right now, and what happened to put it there - so it takes no
- * parameters at all. A date selector would only be a way to turn it back into
- * the other page.
+ * picker. This answers the question asked at closing time - what is in the
+ * till, and what happened to put it there - and it opens on today, because
+ * that is the day being closed.
+ *
+ * It steps back a day at a time with the same strip the daily sheet uses,
+ * rather than the range picker Hisobot has. That is the difference between
+ * the two screens: a range is a question about a period, and a tab is
+ * yesterday, which the desk checks when a number does not add up. Anything
+ * wider is what Hisobot is for.
  *
  * The money is deliberately shown split by method before it is shown as a
  * total: the desk counts cash and checks Click on a phone, so a single number
@@ -46,17 +52,18 @@ import { ErrorState } from "@/components/ui/states";
  */
 export default function TodayPage() {
   const today = dateKey();
+  const [date, setDate] = useState(() => today);
 
   const { data, loading, error, reload } = useResource(async () => {
     const [sheet, payments, subs, settings, advances] = await Promise.all([
-      getDailySheet(today),
+      getDailySheet(date),
       listPayments(),
       listAllSubscriptions(),
       getSettings(),
-      getWorkerAdvances(today),
+      getWorkerAdvances(date),
     ]);
     return { sheet, payments, subs, settings, advances };
-  }, [today]);
+  }, [date]);
 
   const rows = useMemo(() => data?.sheet.rows ?? [], [data]);
 
@@ -69,27 +76,27 @@ export default function TodayPage() {
     [data],
   );
 
-  /** Subscriptions sold today, newest first. */
+  /** Subscriptions sold on the day being shown, newest first. */
   const sold = useMemo(() => {
     if (!data) return [];
-    return data.subs.filter((s) => timestampDay(s.createdAt) === today);
-  }, [data, today]);
+    return data.subs.filter((s) => timestampDay(s.createdAt) === date);
+  }, [data, date]);
 
-  /** Money taken today against a subscription, so a sale can name its method. */
+  /** That day's money against a subscription, so a sale can name its method. */
   const paidBySubscription = useMemo(() => {
     const map = new Map<string, { amount: number; methods: Set<PaymentMethodId> }>();
     for (const p of data?.payments ?? []) {
-      if (!p.subscriptionId || timestampDay(p.paidAt) !== today) continue;
+      if (!p.subscriptionId || timestampDay(p.paidAt) !== date) continue;
       const cur = map.get(p.subscriptionId) ?? { amount: 0, methods: new Set() };
       cur.amount += p.amount;
       cur.methods.add(p.method);
       map.set(p.subscriptionId, cur);
     }
     return map;
-  }, [data, today]);
+  }, [data, date]);
 
   /**
-   * Everything sold off the daily sheet today, biggest earner first.
+   * Everything sold off the daily sheet that day, biggest earner first.
    *
    * Counted from the sheet's own lines rather than from stock movements: the
    * line is what the member was charged, and that is what this page is about.
@@ -112,7 +119,7 @@ export default function TodayPage() {
   }, [rows]);
 
   /**
-   * What came in today, per method, from both places money arrives.
+   * What came in that day, per method, from both places money arrives.
    *
    * The daily sheet collects floor fees, products and the gym's own columns;
    * subscription money is a payment. Adding them per method rather than only
@@ -125,7 +132,7 @@ export default function TodayPage() {
   const byMethod = useMemo(() => {
     const totals = new Map<PaymentMethodId | null, number>(totalsByMethod(rows));
     for (const p of data?.payments ?? []) {
-      if (timestampDay(p.paidAt) !== today) continue;
+      if (timestampDay(p.paidAt) !== date) continue;
       totals.set(p.method, (totals.get(p.method) ?? 0) + p.amount);
     }
 
@@ -142,7 +149,7 @@ export default function TodayPage() {
         label: paymentMethodLabel(id, methods),
         amount,
       }));
-  }, [rows, data, methods, today]);
+  }, [rows, data, methods, date]);
 
   const takings = byMethod.reduce((s, m) => s + m.amount, 0);
 
@@ -151,7 +158,7 @@ export default function TodayPage() {
     [data],
   );
 
-  /* What the sheet says was charged today, settled or not. */
+  /* What the sheet says was charged that day, settled or not. */
   const sheetCharged = rows.reduce((s, r) => s + rowTotal(r), 0);
   const sheetCollected = rows.reduce((s, r) => s + rowCollected(r), 0);
   const outstanding = Math.max(0, sheetCharged - sheetCollected);
@@ -165,8 +172,10 @@ export default function TodayPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Bugungi hisobot"
-        subtitle={formatDateKey(today)}
+        // Named for the day it is showing rather than always "Bugungi", which
+        // would be a lie on every tab but one.
+        title={date === today ? "Bugungi hisobot" : "Kun hisoboti"}
+        subtitle={formatDateKey(date)}
         actions={
           <Button
             variant="outline"
@@ -179,6 +188,8 @@ export default function TodayPage() {
           </Button>
         }
       />
+
+      <DayTabs date={date} onChange={setDate} />
 
       {error ? (
         <ErrorState message={error} onRetry={reload} />
@@ -197,7 +208,7 @@ export default function TodayPage() {
                 {byMethod.length === 0 ? (
                   <tr>
                     <Td colSpan={2} className="text-center text-muted-foreground">
-                      Bugun hali pul olinmagan
+                      Bu kuni pul olinmagan
                     </Td>
                   </tr>
                 ) : (
@@ -222,7 +233,7 @@ export default function TodayPage() {
                   </Td>
                 </tr>
                 {/* Money out. Only shown on a day it happened, so the report
-                    does not carry a row of zeroes most days. */}
+                    does not carry a row of zeroes on every other day. */}
                 {advance > 0 ? (
                   <>
                     <tr className="border-t border-grid-line">
@@ -244,7 +255,7 @@ export default function TodayPage() {
           </Section>
 
           {/* Bugungi abonementlar */}
-          <Section title={`Bugungi abonementlar${sold.length ? ` (${sold.length})` : ""}`}>
+          <Section title={`Abonementlar${sold.length ? ` (${sold.length})` : ""}`}>
             <table className="w-full table-fixed border-collapse text-xs">
               <colgroup>
                 <col />
@@ -266,7 +277,7 @@ export default function TodayPage() {
                 {sold.length === 0 ? (
                   <tr>
                     <Td colSpan={5} className="text-center text-muted-foreground">
-                      Bugun hech kim abonement olmadi
+                      Bu kuni hech kim abonement olmadi
                     </Td>
                   </tr>
                 ) : (
@@ -318,8 +329,8 @@ export default function TodayPage() {
                           ) : (
                             <span className="text-muted-foreground">-</span>
                           )}
-                          {/* Sold today but not fully settled today. The desk
-                              needs this on the closing report, not a week
+                          {/* Sold that day but not fully settled on it. The
+                              desk needs this on the closing report, not a week
                               later off the debtors list. */}
                           {debt > 0 ? (
                             <span className="block text-[0.7rem] text-status-debt-foreground">
@@ -369,7 +380,7 @@ export default function TodayPage() {
                 {products.length === 0 ? (
                   <tr>
                     <Td colSpan={4} className="text-center text-muted-foreground">
-                      Bugun mahsulot sotilmagan
+                      Bu kuni mahsulot sotilmagan
                     </Td>
                   </tr>
                 ) : (

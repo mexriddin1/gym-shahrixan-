@@ -4,8 +4,6 @@ import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import {
-  CaretLeftIcon,
-  CaretRightIcon,
   IdentificationBadgeIcon,
   PrinterIcon,
 } from "@phosphor-icons/react";
@@ -16,7 +14,6 @@ import { setWorkerAdvance } from "@/lib/db/mutations";
 import { workerFullName, type Worker } from "@/lib/db/types";
 import { useResource } from "@/lib/db/use-resource";
 import {
-  addDays,
   cn,
   dateKey,
   formatCell,
@@ -26,6 +23,7 @@ import {
 import { useCellNavigation } from "@/components/grid/use-cell-navigation";
 import { MoneyCell } from "@/components/grid/money-cell";
 import { PageHeader } from "@/components/app/app-shell";
+import { DayTabs } from "@/components/app/day-tabs";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/states";
@@ -303,83 +301,5 @@ function Td({
     >
       {children}
     </td>
-  );
-}
-
-/**
- * Day tabs, the same strip the daily sheet uses.
- *
- * Anchored on today rather than on the selected day, so stepping back a week
- * never pushes today off the strip and the way home is always one click.
- */
-function DayTabs({
-  date,
-  onChange,
-}: {
-  date: string;
-  onChange: (next: string) => void;
-}) {
-  const today = dateKey();
-
-  const days = useMemo(() => {
-    const recent = Array.from({ length: 7 }, (_, i) => addDays(today, i - 6));
-    return recent.includes(date) ? recent : [date, ...recent];
-  }, [date, today]);
-
-  return (
-    <div className="flex items-center gap-1 print:hidden">
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label="Oldingi kun"
-        onClick={() => onChange(addDays(date, -1))}
-      >
-        <CaretLeftIcon />
-      </Button>
-
-      <div className="flex flex-1 gap-1 overflow-x-auto">
-        {days.map((day) => {
-          const active = day === date;
-          return (
-            <button
-              key={day}
-              type="button"
-              onClick={() => onChange(day)}
-              aria-current={active ? "date" : undefined}
-              className={cn(
-                "nums shrink-0 rounded-md px-2.5 py-1 text-xs whitespace-nowrap",
-                "transition-colors",
-                active
-                  ? "bg-brand font-medium text-brand-foreground"
-                  : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground",
-              )}
-            >
-              {formatDateKey(day).slice(0, 5)}
-              {day === today ? (
-                <span
-                  className={cn(
-                    "ml-1",
-                    active ? "text-brand-foreground/70" : "text-brand",
-                  )}
-                >
-                  •
-                </span>
-              ) : null}
-            </button>
-          );
-        })}
-      </div>
-
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label="Keyingi kun"
-        // Cannot step past today: there is nothing to record on a future day.
-        disabled={date >= today}
-        onClick={() => onChange(addDays(date, 1))}
-      >
-        <CaretRightIcon />
-      </Button>
-    </div>
   );
 }
