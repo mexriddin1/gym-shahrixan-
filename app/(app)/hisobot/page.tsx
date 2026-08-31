@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 import {
+  getSettings,
   getSheetRowsForDates,
   getWorkerAdvancesForDates,
   listAllSubscriptions,
@@ -10,7 +11,12 @@ import {
   listDebtors,
   listPayments,
 } from "@/lib/db/queries";
-import { rowTotal } from "@/lib/db/types";
+import {
+  paymentMethodLabel,
+  rowTotal,
+  totalsByMethod,
+  type PaymentMethodId,
+} from "@/lib/db/types";
 import { useResource } from "@/lib/db/use-resource";
 import {
   addDays,
@@ -82,19 +88,21 @@ export default function ReportPage() {
 
   const { data, loading, error, reload } = useResource(async () => {
     const dates = datesInRange(range);
-    const [sheet, advances, payments, subs, clients, debtors] = await Promise.all([
-      getSheetRowsForDates(dates),
-      getWorkerAdvancesForDates(dates),
-      listPayments(),
-      listAllSubscriptions(),
-      listClients(),
-      listDebtors(),
-    ]);
+    const [sheet, advances, payments, subs, clients, debtors, settings] =
+      await Promise.all([
+        getSheetRowsForDates(dates),
+        getWorkerAdvancesForDates(dates),
+        listPayments(),
+        listAllSubscriptions(),
+        listClients(),
+        listDebtors(),
+        getSettings(),
+      ]);
     const sheets = dates.map((d) => ({ rows: sheet.rows.get(d) ?? [] }));
     // The dates travel with their sheets. Deriving them separately let the two
     // fall out of step while a longer range was still loading, and the report
     // read past the end of the array.
-    return { dates, sheets, advances, payments, subs, clients, debtors };
+    return { dates, sheets, advances, payments, subs, clients, debtors, settings };
   }, [range.from, range.to]);
 
   const daily = useMemo(() => {
@@ -212,6 +220,57 @@ export default function ReportPage() {
       net: 0,
     },
   );
+
+  /**
+   * What came in over the period, split by how it came in.
+   *
+   * Two places money arrives and both have to be in the same total: the daily
+   * sheet collects floor fees, products and the gym's own columns, while
+   * subscription money is a payment. Summing them apart would leave whoever is
+   * checking a month against a bank statement adding two numbers first.
+   *
+   * Only settled money counts. What the sheet charged but has not collected is
+   * a debt, and it is reported as one further down - putting it here would
+   * make the split add up to more than the gym actually took.
+   *
+   * A charge recorded before the sheet asked how it was paid comes back under
+   * `null` and prints as "Belgilanmagan". Attributing it to cash would be a
+   * guess, and the whole point of this table is that it can be checked.
+   */
+  const byMethod = useMemo(() => {
+    if (!data) return [];
+    const methods = [...data.settings.paymentMethods].sort(
+      (a, b) => a.position - b.position,
+    );
+
+    const totals = new Map<PaymentMethodId | null, number>(
+      totalsByMethod(data.sheets.flatMap((s) => s.rows)),
+    );
+
+    const from = data.dates[data.dates.length - 1];
+    const to = data.dates[0];
+    for (const p of data.payments) {
+      const day = timestampDay(p.paidAt);
+      if (!day || day < from || day > to) continue;
+      totals.set(p.method, (totals.get(p.method) ?? 0) + p.amount);
+    }
+
+    const order = new Map(methods.map((m, i) => [m.id, i]));
+    return [...totals]
+      .filter(([, amount]) => amount !== 0)
+      .sort(
+        ([a], [b]) =>
+          (order.get(a ?? "") ?? methods.length) -
+          (order.get(b ?? "") ?? methods.length),
+      )
+      .map(([id, amount]) => ({
+        id: id ?? "none",
+        label: paymentMethodLabel(id, methods),
+        amount,
+      }));
+  }, [data]);
+
+  const collected = byMethod.reduce((s, m) => s + m.amount, 0);
 
   /**
    * Advances over the period, per worker, biggest first.
@@ -494,6 +553,47 @@ export default function ReportPage() {
             </table>
 
             <Pagination {...dailyPaged} onPageChange={dailyPaged.setPage} />
+          </Section>
+
+          {/* To'lov turlari */}
+          <Section title="To'lov turlari">
+            <table className="w-full table-fixed border-collapse text-xs">
+              <colgroup>
+                <col />
+                <col className="w-40" />
+              </colgroup>
+              <tbody>
+                {byMethod.length === 0 ? (
+                  <tr>
+                    <Td colSpan={2} className="text-center text-muted-foreground">
+                      Bu davrda pul olinmagan
+                    </Td>
+                  </tr>
+                ) : (
+                  byMethod.map((m) => (
+                    <tr
+                      key={m.id}
+                      className="border-b border-grid-line last:border-0"
+                    >
+                      <Td className="text-left">{m.label}</Td>
+                      <Td className="nums text-right font-medium">
+                        {formatSom(m.amount)}
+                      </Td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+              {byMethod.length > 0 ? (
+                <tfoot>
+                  <tr className="border-t-2 border-border bg-grid-header font-medium">
+                    <Td className="text-left">Jami olingan</Td>
+                    <Td className="nums text-right font-semibold">
+                      {formatSom(collected)}
+                    </Td>
+                  </tr>
+                </tfoot>
+              ) : null}
+            </table>
           </Section>
 
           {/* Ishchilar avansi */}
