@@ -82,6 +82,27 @@ const COL_KEY = 0;
 const COL_GYM = 1;
 const COL_EXTRA = 2;
 
+/**
+ * Whether a row has anything to do with one way of paying.
+ *
+ * Two ways it can: money already came in under that method, or the row is set
+ * to it and has not paid yet. Both belong in the answer, because the desk
+ * filtering by Click is asking "what about Click today" - the money taken and
+ * the money still to take - not only what is already settled.
+ *
+ * A row that took cash for the floor fee and Click for a drink honestly
+ * appears under both. This is a filter, not a way of dividing the day up.
+ */
+function rowUsesMethod(
+  row: DailySheetRow,
+  method: PaymentMethodId,
+  selected: PaymentMethodId | null,
+): boolean {
+  const collected = rowCollectedByMethod(row);
+  if (collected.some((c) => c.method === method)) return true;
+  return collected.length === 0 && selected === method;
+}
+
 export default function DailySheetPage() {
   const [date, setDate] = useState(() => dateKey());
   const { confirm, dialog: confirmDialog } = useConfirm();
@@ -143,6 +164,42 @@ export default function DailySheetPage() {
     [defaultMethod],
   );
 
+  /**
+   * Show only the rows to do with one way of paying. null is the whole day.
+   *
+   * Reconciling a till at closing time means reading one method at a time:
+   * count the cash, then check the Click total against the phone. Scanning a
+   * full sheet for the rows that were Click is exactly the job the workbook
+   * made people do by eye.
+   */
+  const [methodFilter, setMethodFilter] = useState<PaymentMethodId | null>(null);
+
+  const visibleRows = useMemo(
+    () =>
+      methodFilter === null
+        ? rows
+        : rows.filter((r) => rowUsesMethod(r, methodFilter, methodFor(r))),
+    [rows, methodFilter, methodFor],
+  );
+
+  /**
+   * How many rows and how much money sit behind each chip.
+   *
+   * The amount is what was actually collected under that method, taken from
+   * the same split that backs the day's totals, so a chip and the summary can
+   * never disagree. The count is rows involved, which is the larger number:
+   * a row that has taken nothing yet counts against the method it is set to,
+   * because that is the one the desk will collect it under.
+   */
+  const methodSummary = useMemo(() => {
+    const collectedPer = totalsByMethod(rows);
+    return methods.map((m) => ({
+      ...m,
+      count: rows.filter((r) => rowUsesMethod(r, m.id, methodFor(r))).length,
+      collected: collectedPer.get(m.id) ?? 0,
+    }));
+  }, [rows, methods, methodFor]);
+
   /** Members whose subscription covers today, so the floor fee reads "oylik". */
   const covered = useMemo(() => {
     if (!data) return new Set<string>();
@@ -163,15 +220,17 @@ export default function DailySheetPage() {
     char?: string;
   } | null>(null);
 
+  // Navigation walks what is on screen, so arrowing down a filtered sheet
+  // steps to the next visible row rather than into a hidden one.
   const nav = useCellNavigation({
-    rowCount: Math.max(rows.length, 1),
+    rowCount: Math.max(visibleRows.length, 1),
     colCount,
     onActivate: (pos, char) => setEditing({ ...pos, char }),
   });
 
   const commitCell = useCallback(
     async (rowIndex: number, colIndex: number, next: number) => {
-      const row = rows[rowIndex];
+      const row = visibleRows[rowIndex];
       if (!row) return;
       setEditing(null);
 
@@ -232,7 +291,7 @@ export default function DailySheetPage() {
         toast.error("Saqlab bo'lmadi. Qayta urinib ko'ring.");
       }
     },
-    [rows, date, mutate, extraColumns, colDiscount, covered],
+    [visibleRows, date, mutate, extraColumns, colDiscount, covered],
   );
 
   /** Adds a member to the sheet, defaulting the floor fee from their subscription. */
@@ -488,18 +547,27 @@ export default function DailySheetPage() {
     }
   }
 
-  const dayTotal = rows.reduce((sum, r) => sum + rowTotal(r), 0);
-  const collected = rows.reduce((sum, r) => sum + rowCollected(r), 0);
+  /*
+   * Totals follow what is on screen, so a filtered sheet adds up to the number
+   * under it. The whole day is never lost: it is printed alongside whenever a
+   * filter is on, and the chips carry the exact money per method.
+   */
+  const dayTotal = visibleRows.reduce((sum, r) => sum + rowTotal(r), 0);
+  const collected = visibleRows.reduce((sum, r) => sum + rowCollected(r), 0);
   const uncollected = Math.max(0, dayTotal - collected);
-  const gymTotal = rows.reduce(
+  const fullDayTotal =
+    methodFilter === null
+      ? dayTotal
+      : rows.reduce((sum, r) => sum + rowTotal(r), 0);
+  const gymTotal = visibleRows.reduce(
     (sum, r) => sum + (r.gymFeeMode === "cash" ? r.gymFee : 0),
     0,
   );
-  const itemsTotal = rows.reduce(
+  const itemsTotal = visibleRows.reduce(
     (sum, r) => sum + r.items.reduce((s, i) => s + i.lineTotal, 0),
     0,
   );
-  const discountTotal = rows.reduce((sum, r) => sum + r.discount, 0);
+  const discountTotal = visibleRows.reduce((sum, r) => sum + r.discount, 0);
   /**
    * What was taken, split by how it came in.
    *
@@ -508,7 +576,7 @@ export default function DailySheetPage() {
    */
   const collectedSplit = (() => {
     const order = new Map(methods.map((m, i) => [m.id, i]));
-    return [...totalsByMethod(rows)]
+    return [...totalsByMethod(visibleRows)]
       .filter(([, amount]) => amount > 0)
       .sort(
         ([a], [b]) =>
@@ -524,7 +592,7 @@ export default function DailySheetPage() {
   const extraTotals = new Map(
     extraColumns.map((c) => [
       c.id,
-      rows.reduce((sum, r) => sum + (r.extras?.[c.id]?.amount ?? 0), 0),
+      visibleRows.reduce((sum, r) => sum + (r.extras?.[c.id]?.amount ?? 0), 0),
     ]),
   );
 
@@ -546,7 +614,35 @@ export default function DailySheetPage() {
         }
       />
 
-      <DayTabs date={date} onChange={setDate} />
+      {/* Stepping to another day clears the filter. It was a way of reading
+          one day, and carrying it over lands on a sheet filtered by a method
+          that day may have no rows for - which reads as an empty day. */}
+      <DayTabs
+        date={date}
+        onChange={(next) => {
+          setDate(next);
+          setMethodFilter(null);
+        }}
+      />
+
+      {/* Only worth offering once the day has rows and the gym takes money
+          more than one way. A cash-only desk would be reading "Naqd" next to
+          "Hammasi" and picking between two names for the same list. The bar
+          also stays up whenever a filter is on, so there is never a state
+          with a filter applied and no control on screen to lift it. */}
+      {methodFilter !== null || (rows.length > 0 && methods.length > 1) ? (
+        <MethodFilter
+          methods={methodSummary}
+          active={methodFilter}
+          total={rows.length}
+          onChange={(next) => {
+            setMethodFilter(next);
+            // Row indices are about to mean different rows, so an open editor
+            // would commit its number onto whoever now sits at that index.
+            setEditing(null);
+          }}
+        />
+      ) : null}
 
       {error ? (
         <ErrorState message={error} onRetry={reload} />
@@ -603,11 +699,15 @@ export default function DailySheetPage() {
             </thead>
 
             <tbody>
-              {rows.map((row, rowIndex) => (
+              {visibleRows.map((row, rowIndex) => (
                 <SheetRow
                   key={row.id}
                   row={row}
                   rowIndex={rowIndex}
+                  // The number the row has on the sheet, not its place in the
+                  // filtered view: the desk reads these off a printout and
+                  // "07" has to mean the same row whatever is being shown.
+                  number={rows.indexOf(row) + 1}
                   extraColumns={extraColumns}
                   colDiscount={colDiscount}
                   methods={methods}
@@ -637,40 +737,55 @@ export default function DailySheetPage() {
                 />
               ))}
 
-              {/* The blank row. Always there, always ready for the next name.
-                  Every column is rendered, empty ones included, so it lines up
-                  with the rows above instead of collapsing across them. */}
-              <tr className="border-b border-grid-line bg-grid-row-hover/40 print:hidden">
-                <Td className="text-center text-muted-foreground">
-                  <span className="nums">
-                    {String(rows.length + 1).padStart(2, "0")}
-                  </span>
-                </Td>
-                <Td className="p-0">
-                  <NewRowInput
-                    clients={data?.clients ?? []}
-                    existingIds={rows
-                      .map((r) => r.clientId)
-                      .filter((id): id is string => !!id)}
-                    onSelect={addRow}
-                    onCreate={addWalkIn}
-                  />
-                </Td>
-                <Td />
-                <Td />
-                <Td />
-                {extraColumns.map((c) => (
-                  <Td key={c.id} />
-                ))}
-                <Td />
-                <Td />
-                <Td />
-                <Td />
-                <Td />
-              </tr>
+              {/* A filter is a way of reading the day, not of writing it. The
+                  blank row is hidden while one is on, because a name typed
+                  into it would be seated and then immediately vanish behind
+                  the filter, which reads as the add having failed. */}
+              {methodFilter === null ? (
+                /* The blank row. Always there, always ready for the next name.
+                   Every column is rendered, empty ones included, so it lines up
+                   with the rows above instead of collapsing across them. */
+                <tr className="border-b border-grid-line bg-grid-row-hover/40 print:hidden">
+                  <Td className="text-center text-muted-foreground">
+                    <span className="nums">
+                      {String(rows.length + 1).padStart(2, "0")}
+                    </span>
+                  </Td>
+                  <Td className="p-0">
+                    <NewRowInput
+                      clients={data?.clients ?? []}
+                      existingIds={rows
+                        .map((r) => r.clientId)
+                        .filter((id): id is string => !!id)}
+                      onSelect={addRow}
+                      onCreate={addWalkIn}
+                    />
+                  </Td>
+                  <Td />
+                  <Td />
+                  <Td />
+                  {extraColumns.map((c) => (
+                    <Td key={c.id} />
+                  ))}
+                  <Td />
+                  <Td />
+                  <Td />
+                  <Td />
+                  <Td />
+                </tr>
+              ) : visibleRows.length === 0 ? (
+                <tr className="border-b border-grid-line">
+                  <Td
+                    colSpan={colCount + 7}
+                    className="py-6 text-center text-muted-foreground"
+                  >
+                    Bu to&apos;lov turi bo&apos;yicha satr yo&apos;q
+                  </Td>
+                </tr>
+              ) : null}
             </tbody>
 
-            {rows.length > 0 ? (
+            {visibleRows.length > 0 ? (
               <tfoot>
                 <tr className="border-t-2 border-border bg-grid-header font-medium">
                   <Td />
@@ -707,12 +822,27 @@ export default function DailySheetPage() {
       {/* The gym charges on the way out, so what is owed and what is in the
           till are different numbers. Both belong on screen, and they read as a
           summary of the sheet above rather than a header over it. */}
-      {rows.length > 0 ? (
+      {visibleRows.length > 0 ? (
         <div className="space-y-1">
           <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 text-sm">
-            <Total label="Kun bo'yicha" value={dayTotal} />
+            <Total
+              label={
+                methodFilter
+                  ? paymentMethodLabel(methodFilter, methods)
+                  : "Kun bo'yicha"
+              }
+              value={dayTotal}
+            />
             <Total label="To'langan" value={collected} tone="paid" />
             <Total label="Qolgan" value={uncollected} tone="debt" />
+            {/* The day's own number, kept in sight so a filtered total is
+                never mistaken for what the gym took today. */}
+            {methodFilter ? (
+              <span className="text-xs text-muted-foreground">
+                {"Kun bo'yicha "}
+                <span className="nums">{formatSom(fullDayTotal)}</span>
+              </span>
+            ) : null}
           </div>
 
           {collectedSplit.length > 1 ? (
@@ -767,6 +897,7 @@ export default function DailySheetPage() {
 function SheetRow({
   row,
   rowIndex,
+  number,
   extraColumns,
   colDiscount,
   methods,
@@ -786,7 +917,10 @@ function SheetRow({
   onChangeMethod,
 }: {
   row: DailySheetRow;
+  /** Where this row sits in the grid's keyboard navigation. */
   rowIndex: number;
+  /** The row's number on the sheet, which a filter must not renumber. */
+  number: number;
   extraColumns: SheetColumn[];
   colDiscount: number;
   methods: PaymentMethod[];
@@ -830,7 +964,7 @@ function SheetRow({
   return (
     <tr className="group border-b border-grid-line last:border-0 hover:bg-grid-row-hover">
       <Td className="text-center text-muted-foreground">
-        <span className="nums">{String(rowIndex + 1).padStart(2, "0")}</span>
+        <span className="nums">{String(number).padStart(2, "0")}</span>
       </Td>
 
       <Td
@@ -1007,6 +1141,104 @@ function SheetRow({
         </button>
       </Td>
     </tr>
+  );
+}
+
+/**
+ * Read the day one payment method at a time.
+ *
+ * Chips rather than a dropdown: the whole point is to see the split without
+ * opening anything, so each method carries its own money and row count and the
+ * desk can reconcile a till by reading across. Picking one narrows the sheet
+ * to the rows that method is involved in.
+ *
+ * Hidden on a printout. Paper is the day itself, and a page that says "Jami"
+ * over a filtered subset with nothing to say it is filtered is a page that
+ * will eventually be trusted as the day's takings.
+ */
+function MethodFilter({
+  methods,
+  active,
+  total,
+  onChange,
+}: {
+  methods: (PaymentMethod & { count: number; collected: number })[];
+  active: PaymentMethodId | null;
+  /** Rows on the sheet altogether, for the "Hammasi" chip. */
+  total: number;
+  onChange: (next: PaymentMethodId | null) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="To'lov turi bo'yicha filtr"
+      className="flex flex-wrap items-center gap-1.5 print:hidden"
+    >
+      <FilterChip
+        active={active === null}
+        onClick={() => onChange(null)}
+        label="Hammasi"
+        count={total}
+      />
+      {methods.map((m) => (
+        <FilterChip
+          key={m.id}
+          active={active === m.id}
+          // Clicking the chip already on wants the whole day back. Anything
+          // else leaves the desk hunting for a "clear" it should not need.
+          onClick={() => onChange(active === m.id ? null : m.id)}
+          label={m.name}
+          count={m.count}
+          amount={m.collected}
+        />
+      ))}
+    </div>
+  );
+}
+
+function FilterChip({
+  active,
+  onClick,
+  label,
+  count,
+  amount,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  count: number;
+  /** Collected under this method. Omitted on "Hammasi". */
+  amount?: number;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={cn(
+        "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs",
+        "transition-colors outline-none",
+        "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand",
+        active
+          ? "bg-brand font-medium text-brand-foreground"
+          : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground",
+      )}
+    >
+      {label}
+      <span className={cn("nums", active ? "text-brand-foreground/70" : "")}>
+        {count}
+      </span>
+      {amount !== undefined && amount > 0 ? (
+        <span
+          className={cn(
+            "nums font-medium",
+            active ? "text-brand-foreground" : "text-foreground",
+          )}
+        >
+          {formatSom(amount)}
+        </span>
+      ) : null}
+    </button>
   );
 }
 
