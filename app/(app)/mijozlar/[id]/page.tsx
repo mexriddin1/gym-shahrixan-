@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { toast } from "sonner";
 import {
   ArrowLeftIcon,
+  ArrowsLeftRightIcon,
   PencilSimpleIcon,
   ProhibitIcon,
   ReceiptIcon,
@@ -35,6 +36,7 @@ import { cn, dateKey, formatDateKey, formatPhone, formatSom } from "@/lib/utils"
 import { ClientFormDialog } from "@/components/app/client-form-dialog";
 import { SellTariffDialog } from "@/components/app/sell-tariff-dialog";
 import { EditSubscriptionDialog } from "@/components/app/edit-subscription-dialog";
+import { ChangeTariffDialog } from "@/components/app/change-tariff-dialog";
 import { PaymentDialog, type PaymentTarget } from "@/components/app/payment-dialog";
 import { ReceiptDialog } from "@/components/app/receipt-dialog";
 import { PurchaseHistory } from "@/components/app/purchase-history";
@@ -56,6 +58,7 @@ export default function ClientDetailPage() {
   const [payOpen, setPayOpen] = useState(false);
   const [payTarget, setPayTarget] = useState<PaymentTarget | null>(null);
   const [editSub, setEditSub] = useState<Subscription | null>(null);
+  const [changeSub, setChangeSub] = useState<Subscription | null>(null);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
 
   const { data, loading, error, reload } = useResource(async () => {
@@ -166,6 +169,7 @@ export default function ClientDetailPage() {
         paidMap={paidMap}
         onReceipt={setReceipt}
         onEdit={setEditSub}
+        onChangeTariff={setChangeSub}
         onPay={(target) => {
           setPayTarget(target);
           setPayOpen(true);
@@ -221,6 +225,16 @@ export default function ClientDetailPage() {
         onSaved={reload}
       />
 
+      <ChangeTariffDialog
+        open={changeSub !== null}
+        onOpenChange={(open) => !open && setChangeSub(null)}
+        subscription={changeSub}
+        paid={changeSub ? (paidMap.get(changeSub.id) ?? 0) : 0}
+        tariffs={tariffs}
+        methods={settings.paymentMethods}
+        onSaved={reload}
+      />
+
       <PaymentDialog
         open={payOpen}
         onOpenChange={setPayOpen}
@@ -247,6 +261,7 @@ function SubscriptionHistory({
   paidMap,
   onReceipt,
   onEdit,
+  onChangeTariff,
   onPay,
   onCancel,
   onDelete,
@@ -257,6 +272,7 @@ function SubscriptionHistory({
   paidMap: Map<string, number>;
   onReceipt: (receipt: Receipt) => void;
   onEdit: (sub: Subscription) => void;
+  onChangeTariff: (sub: Subscription) => void;
   onPay: (target: PaymentTarget) => void;
   onCancel: (sub: Subscription) => void;
   onDelete: (sub: Subscription) => void;
@@ -368,6 +384,20 @@ function SubscriptionHistory({
                           onClick={() => onEdit(sub)}
                         >
                           <PencilSimpleIcon />
+                        </Button>
+                      ) : null}
+
+                      {/* An upgrade mid-term, typically to VIP. The price
+                          difference stays on the member as debt. */}
+                      {!cancelled ? (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`${sub.tariffName} tarifini almashtirish`}
+                          title="Tarifni almashtirish"
+                          onClick={() => onChangeTariff(sub)}
+                        >
+                          <ArrowsLeftRightIcon />
                         </Button>
                       ) : null}
 

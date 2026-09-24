@@ -199,6 +199,67 @@ export async function updateSubscription(
   });
 }
 
+/* --------------------------- change the tariff --------------------------- */
+
+/**
+ * Moves a sale onto a different tariff, typically an upgrade to VIP a few
+ * days after buying the ordinary one.
+ *
+ * The sale keeps its code, start date and payments; only the terms are
+ * re-snapshotted from the new tariff. Nothing is charged here: debt is derived
+ * as `finalPrice - payments`, so the price difference simply shows up as debt
+ * and is settled through an ordinary payment, which lands in the takings of
+ * the day it is actually paid.
+ *
+ * Any discount on the old tariff is dropped, since it was agreed against a
+ * different price. A hand-set end date is kept; an automatic one is recomputed
+ * from the new duration.
+ */
+export async function changeSubscriptionTariff(
+  id: string,
+  before: Subscription,
+  tariff: Tariff,
+  actor: Actor,
+): Promise<void> {
+  const { updateDoc } = await import("firebase/firestore");
+
+  const endDate = before.endDateManual
+    ? before.endDate
+    : computeEndDate(before.startDate, tariff.durationDays);
+
+  await updateDoc(doc(subscriptionsRef(), id), {
+    tariffId: tariff.id,
+    tariffName: tariff.name,
+    originalPrice: tariff.price,
+    discountType: "none",
+    discountValue: 0,
+    discountReason: null,
+    finalPrice: tariff.price,
+    durationDays: tariff.durationDays,
+    visitLimit: tariff.visitLimit,
+    weeklyLimit: tariff.weeklyLimit,
+    allowedWeekdays: tariff.allowedWeekdays,
+    isVip: tariff.isVip,
+    endDate,
+    updatedAt: now(),
+  });
+
+  writeAudit({
+    actor,
+    action: "update",
+    entity: "subscription",
+    entityId: id,
+    before: {
+      client: before.clientName,
+      tariff: before.tariffName,
+      finalPrice: before.finalPrice,
+      endDate: before.endDate,
+    },
+    after: { tariff: tariff.name, finalPrice: tariff.price, endDate },
+    reason: "Tarif almashtirildi",
+  });
+}
+
 /* ------------------------------- payments ------------------------------- */
 
 export type PaymentInput = {
