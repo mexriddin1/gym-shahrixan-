@@ -811,6 +811,29 @@ export default function DailySheetPage() {
                   </Td>
                   <Td className="print:hidden" />
                 </tr>
+                {/* Filtered, the Jami above still adds up whole rows, and a
+                    row can have paid part cash and part Click. These rows say
+                    how much of it actually came in each way. */}
+                {methodFilter
+                  ? collectedSplit.map((m) => (
+                      <tr
+                        key={m.id}
+                        className={cn(
+                          "border-t border-grid-line bg-grid-header",
+                          m.id === methodFilter && "font-semibold",
+                        )}
+                      >
+                        <Td />
+                        <Td className="text-left">{m.label}</Td>
+                        <Td colSpan={extraColumns.length + 5} />
+                        <Td className="nums text-right text-paid-foreground">
+                          {formatSom(m.amount)}
+                        </Td>
+                        <Td />
+                        <Td className="print:hidden" />
+                      </tr>
+                    ))
+                  : null}
               </tfoot>
             ) : null}
           </table>
