@@ -1356,8 +1356,9 @@ function MethodCell({
   onChange: (method: PaymentMethodId) => void;
 }) {
   // What this row has actually taken, and under which method. The dropdown can
-  // only show one, so a row that took money more than one way is marked and
-  // spelled out on hover rather than widened to fit the whole split.
+  // only show one, so a row that took money more than one way spells the split
+  // out under it: the desk reconciling a till reads it off the sheet, not by
+  // hovering row after row.
   const split = new Map<PaymentMethodId | null, number>();
   for (const c of rowCollectedByMethod(row)) {
     split.set(c.method, (split.get(c.method) ?? 0) + c.amount);
@@ -1405,14 +1406,20 @@ function MethodCell({
           ))}
         </select>
 
-        {mixed ? (
-          <span aria-hidden className="shrink-0 text-brand">
-            {"•"}
-          </span>
-        ) : null}
       </div>
 
-      {title ? <span className="sr-only">{`Yig'ilgan: ${title}`}</span> : null}
+      {mixed ? (
+        <div className="space-y-px px-1 pb-0.5 text-[0.7rem] leading-tight text-muted-foreground">
+          {[...split].map(([id, amt]) => (
+            <div key={id ?? ""} className="flex justify-between gap-1">
+              <span className="truncate">{paymentMethodLabel(id, methods)}</span>
+              <span className="nums font-medium text-foreground">
+                {formatSom(amt)}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </td>
   );
 }
