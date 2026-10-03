@@ -822,28 +822,40 @@ export default function DailySheetPage() {
           summary of the sheet above rather than a header over it. */}
       {visibleRows.length > 0 ? (
         <div className="space-y-1">
-          <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 text-sm">
-            <Total
-              label={
-                methodFilter
-                  ? paymentMethodLabel(methodFilter, methods)
-                  : "Kun bo'yicha"
-              }
-              value={dayTotal}
-            />
-            <Total label="To'langan" value={collected} tone="paid" />
-            <Total label="Qolgan" value={uncollected} tone="debt" />
-            {/* The day's own number, kept in sight so a filtered total is
-                never mistaken for what the gym took today. */}
-            {methodFilter ? (
+          {/* A filtered sheet still holds rows that paid part cash, part
+              Click, so one figure under the method's name would add the two
+              together. Filtered, the line reads per method instead: the
+              amount actually taken each way, then what is still to take. */}
+          {methodFilter ? (
+            <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 text-sm">
+              {collectedSplit.length === 0 ? (
+                <Total
+                  label={paymentMethodLabel(methodFilter, methods)}
+                  value={0}
+                  tone="paid"
+                />
+              ) : (
+                collectedSplit.map((m) => (
+                  <Total key={m.id} label={m.label} value={m.amount} tone="paid" />
+                ))
+              )}
+              <Total label="Qolgan" value={uncollected} tone="debt" />
+              {/* The day's own number, kept in sight so a filtered total is
+                  never mistaken for what the gym took today. */}
               <span className="text-xs text-muted-foreground">
                 {"Kun bo'yicha "}
                 <span className="nums">{formatSom(fullDayTotal)}</span>
               </span>
-            ) : null}
-          </div>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 text-sm">
+              <Total label="Kun bo'yicha" value={dayTotal} />
+              <Total label="To'langan" value={collected} tone="paid" />
+              <Total label="Qolgan" value={uncollected} tone="debt" />
+            </div>
+          )}
 
-          {collectedSplit.length > 1 ? (
+          {methodFilter === null && collectedSplit.length > 1 ? (
             <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-xs text-muted-foreground">
               {collectedSplit.map((m) => (
                 <span key={m.id} className="flex items-baseline gap-1.5">
